@@ -1,0 +1,1327 @@
+AI LEAD RECOVERY & APPOINTMENT BOOKING SYSTEM
+PHASE 1 — AUTHORITATIVE ARCHITECTURE LOCK
+Version: 1.0
+Locked: 2026-09-01
+
+PURPOSE
+This file is the authoritative Phase 1 architecture baseline for the portfolio project:
+
+AI Lead Recovery & Appointment Booking System
+
+Fictional business:
+Meridian Professional Training & Services — Demo
+
+This project is materially different from the previously completed GoHighLevel + n8n AI lead-operations portfolio. It must focus on advanced applied Voice AI, appointment booking, missed-call recovery, dormant-lead reactivation, human escalation, persistent conversational state, tool calling, reliability, and operational controls.
+
+If future chat context is lost, re-upload this file and continue from this baseline.
+
+======================================================================
+1. LOCKED PLATFORM DECISIONS
+======================================================================
+
+VOICE AI
+- Retell AI
+- Use Conversation Flow.
+- Initial implementation should use rigid/controlled flow behavior rather than an oversized single prompt.
+- Web calls are used first.
+- Do not buy a phone number during the initial voice foundation.
+- Vapi remains the strongest alternative, but Retell is the selected platform for this project.
+
+DATABASE / DEMO CRM
+- Supabase-managed PostgreSQL.
+- PostgreSQL is the authoritative system of record.
+- Supabase is the development/hosting platform around PostgreSQL.
+- Do not make n8n Data Tables the authoritative business database.
+
+APPLICATION / BACKEND SERVICE
+- Use application-service modules, initially exposed through Supabase Edge Functions where appropriate.
+- This layer owns synchronous tool APIs and deterministic business controls.
+- Keep the business-service code portable enough that it could later move to an always-on Node/TypeScript service if real-time latency testing proves that necessary.
+- Do not make that change casually; it requires a verified reason.
+
+ORCHESTRATION
+- Existing self-hosted n8n.
+- n8n is NOT the real-time conversational backend.
+- Use n8n for:
+  - asynchronous orchestration;
+  - scheduled jobs;
+  - retries;
+  - notifications;
+  - post-call processing;
+  - reporting;
+  - campaign pacing;
+  - missed-call recovery orchestration;
+  - dormant reactivation;
+  - exception/failure handling.
+
+BOOKING
+- Cal.com API v2.
+- Prefer Cal.com Platform Starter for development/testing.
+- Never design against API v1.
+- Use a fictional 30-minute Meridian Discovery Consultation test event type.
+
+TELEPHONY / SMS — LATER
+- Twilio is introduced only after web voice + booking foundation is stable.
+- Twilio should provide the Australian phone/SMS transport later.
+- Australian SMS should use Twilio directly rather than Retell SMS.
+- Do not require Twilio in Phases 1–5.
+
+AI
+- Retell handles real-time conversational AI.
+- A direct LLM API may later be used for strict post-call structured extraction or free-form reply interpretation where justified.
+- AI is never authoritative for critical lifecycle, eligibility, DND, duplicate, or booking truth.
+
+FRONTEND
+- Later operator interface may use Next.js/React if justified.
+- UI must never become the authoritative business-logic layer.
+
+CRM INTEGRATION
+- Demo CRM is PostgreSQL first.
+- Build a CRM adapter boundary so future integrations can support:
+  - GoHighLevel;
+  - HubSpot;
+  - another CRM.
+- Do not hard-code the system around one CRM vendor.
+
+======================================================================
+2. AUTHORITATIVE RESPONSIBILITY SPLIT
+======================================================================
+
+RETELL OWNS
+- speech recognition;
+- voice generation;
+- interruption handling;
+- turn-taking;
+- conversational flow;
+- knowledge-grounded conversational responses;
+- conversational intent interpretation;
+- invoking approved tools;
+- phone transfer execution later.
+
+RETELL DOES NOT OWN
+- authoritative lifecycle state;
+- DND/contact eligibility;
+- duplicate decisions;
+- booking truth;
+- unrestricted database writes;
+- CRM truth.
+
+APPLICATION SERVICE / EDGE FUNCTIONS OWN
+- tool endpoints;
+- identity resolution;
+- deterministic validation;
+- allowed state transitions;
+- contact eligibility checks;
+- signature verification where applicable;
+- idempotency;
+- Cal.com adapter;
+- CRM adapter interface;
+- booking safety;
+- synchronous low-latency decisions.
+
+POSTGRESQL OWNS
+- prospects;
+- opportunities;
+- contact points;
+- consent/contact eligibility;
+- calls;
+- conversations/messages;
+- appointments;
+- handoffs;
+- AI decisions;
+- tool execution audit;
+- knowledge metadata;
+- raw provider events;
+- outbox events;
+- audit events;
+- failure events;
+- reactivation state;
+- CRM links.
+
+N8N OWNS
+- asynchronous orchestration;
+- provider-event follow-up;
+- post-call jobs;
+- notifications;
+- retries;
+- reporting;
+- campaign pacing;
+- reactivation jobs;
+- operational alerts;
+- exception workflows.
+
+CAL.COM OWNS
+- real appointment availability;
+- provider booking UID;
+- booking provider state.
+
+TWILIO LATER OWNS
+- Australian PSTN transport;
+- Australian SMS transport;
+- missed-call event source;
+- telephony/SMS provider IDs.
+
+======================================================================
+3. AUTHORITATIVE HIGH-LEVEL ARCHITECTURE
+======================================================================
+
+CALLER / WEB CALL
+    ↓
+RETELL AI
+    - Conversation Flow
+    - speech / turn-taking
+    - approved knowledge
+    - qualification dialogue
+    - tool selection
+    ↓
+SIGNED / CONTROLLED TOOL CALLS
+    ↓
+APPLICATION SERVICE
+    - identity
+    - policy
+    - state-transition validation
+    - contact eligibility
+    - idempotency
+    - booking adapter
+    - CRM adapter
+    ↓                 ↓
+POSTGRESQL         CAL.COM API v2
+SOURCE OF TRUTH    BOOKING TRUTH
+
+
+RETELL PROVIDER EVENTS
+    ↓
+WEBHOOK RECEIVER
+    ↓
+VERIFY
+    ↓
+PERSIST RAW PROVIDER EVENT
+    ↓
+ACKNOWLEDGE PROVIDER
+    ↓
+CREATE OUTBOX / CANONICAL EVENT
+    ↓
+N8N
+    - post-call jobs
+    - notifications
+    - reports
+    - retries
+    - operational alerts
+
+
+LATER:
+
+AUSTRALIAN CALLER
+    ↓
+TWILIO
+    ↓
+RETELL
+
+
+TWILIO MISSED CALL / SMS
+    ↓
+VERIFIED WEBHOOK
+    ↓
+POSTGRESQL / OUTBOX
+    ↓
+N8N
+    ↓
+ELIGIBILITY
+    ↓
+CONTROLLED RECOVERY / REACTIVATION
+    ↓
+BOOKING OR HUMAN HANDOFF
+
+
+LATER OPERATOR UI
+    ↓
+NEXT.JS / REACT
+    ↓
+SUPABASE AUTH + RLS
+    ↓
+POSTGRESQL
+
+======================================================================
+4. CORE DOMAIN MODEL
+======================================================================
+
+IMPORTANT DESIGN RULE:
+
+A PERSON/PROSPECT IS NOT THE SAME THING AS A COMMERCIAL OPPORTUNITY.
+
+Prospect:
+- stable identity/contact record.
+
+Opportunity:
+- one commercial enquiry, intent, qualification, lifecycle, objection, and outcome.
+
+A repeat caller may have:
+- one prospect;
+- multiple opportunities over time.
+
+Do not collapse these concepts into one oversized lead table.
+
+CORE TABLES
+
+1. prospects
+Purpose:
+- person/business-contact identity.
+
+Important fields:
+- prospect_id
+- first_name
+- last_name
+- primary_location_code
+- identity_status
+- merged_into_prospect_id
+- created_at
+- updated_at
+
+2. contact_points
+Purpose:
+- phone/email identities.
+
+Fields:
+- contact_point_id
+- prospect_id
+- type
+- raw_value
+- normalized_value
+- is_primary
+- verification_state
+
+3. opportunities
+Purpose:
+- commercial enquiry instance.
+
+Fields:
+- opportunity_id
+- prospect_id
+- lead_type
+- source
+- location_code
+- lifecycle_state
+- qualification_state
+- current_intent
+- current_objection
+- assigned_owner
+- final_outcome
+- created_at
+- updated_at
+- last_activity_at
+- last_contact_at
+- next_action_at
+
+4. contact_eligibility
+Purpose:
+- current channel-specific contact rules.
+
+Fields should support:
+- scope
+- prospect/contact_point
+- channel
+- eligibility_state
+- dnd
+- consent_basis
+- provenance
+- reason_code
+- effective_at
+
+5. consent_events
+Purpose:
+- append-only consent/contact provenance history.
+
+6. calls
+Purpose:
+- canonical call record.
+
+Important fields:
+- call_id
+- provider_call_id
+- prospect_id
+- opportunity_id
+- call_type
+- direction
+- status
+- disconnection_reason
+- started_at
+- ended_at
+- transcript_reference
+- knowledge_retrieval_reference
+- summary
+
+7. conversations
+Purpose:
+- cross-channel conversational session.
+
+8. messages
+Purpose:
+- SMS/chat message records later.
+
+9. appointments
+Purpose:
+- local mirror of booking provider truth.
+
+Important fields:
+- appointment_id
+- opportunity_id
+- prospect_id
+- provider
+- booking_uid
+- event_type
+- start_at_utc
+- end_at_utc
+- attendee_timezone
+- status
+- reschedule_parent_id
+
+10. human_handoffs
+Purpose:
+- first-class escalation/handoff object.
+
+11. ai_decisions
+Purpose:
+- versioned structured AI results.
+
+12. knowledge_sources
+Purpose:
+- approved knowledge metadata and versioning.
+
+13. tool_executions
+Purpose:
+- tool-call audit and idempotency.
+
+14. raw_provider_events
+Purpose:
+- immutable inbound provider-event record.
+
+15. outbox_events
+Purpose:
+- reliable asynchronous work queue.
+
+16. audit_events
+Purpose:
+- business-state audit trail.
+
+17. failure_events
+Purpose:
+- operational errors/exceptions.
+
+18. crm_links
+Purpose:
+- future CRM adapter mappings.
+
+19. reactivation_campaigns
+Purpose:
+- campaign definitions.
+
+20. reactivation_members
+Purpose:
+- eligibility/campaign membership snapshots.
+
+21. reactivation_attempts
+Purpose:
+- individual outreach attempts.
+
+======================================================================
+5. OPPORTUNITY LIFECYCLE STATE MACHINE
+======================================================================
+
+CANONICAL STATES
+
+NEW
+ENGAGED
+QUALIFYING
+QUALIFIED
+BOOKING_READY
+BOOKED
+DORMANT
+WON
+LOST
+CLOSED
+
+PRIMARY PATH
+
+NEW
+→ ENGAGED
+→ QUALIFYING
+→ QUALIFIED
+→ BOOKING_READY
+→ BOOKED
+→ WON
+
+ALTERNATIVE PATHS
+
+QUALIFYING → DORMANT
+QUALIFYING → LOST
+
+QUALIFIED → DORMANT
+
+BOOKED → BOOKING_READY
+only when booking is cancelled or requires rescheduling.
+
+DORMANT → ENGAGED
+only after a legitimate new interaction/reactivation.
+
+Any active state → CLOSED
+only through controlled deterministic/manual closure.
+
+IMPORTANT:
+- DND is NOT a lifecycle state.
+- HUMAN_HANDOFF is NOT a lifecycle state.
+- FOLLOW_UP_REQUIRED is NOT a lifecycle state.
+- Human handoff is an ownership/escalation dimension.
+- DND/contact eligibility is a channel-policy dimension.
+- Follow-up is a next-action dimension.
+- AI may recommend transitions.
+- Application/backend rules validate and perform critical transitions.
+
+Historical LOST opportunities should generally remain historical.
+A genuinely renewed commercial enquiry should normally create a new linked opportunity rather than rewriting history.
+
+======================================================================
+6. CALL LIFECYCLE
+======================================================================
+
+CANONICAL CALL STATES
+
+REGISTERED
+→ ACTIVE
+→ ENDED
+→ ANALYSIS_PENDING
+→ ANALYZED
+→ POST_PROCESSED
+
+FAILURE PATHS
+
+REGISTERED → FAILED
+ACTIVE → FAILED
+
+Transfer state must not replace/distort the base call lifecycle.
+
+Transfer attempts/results belong in:
+- human_handoffs;
+- provider transfer events.
+
+======================================================================
+7. APPOINTMENT LIFECYCLE
+======================================================================
+
+CANONICAL STATES
+
+PROPOSED
+→ CREATE_PENDING
+→ CONFIRMED
+
+SUBSEQUENT PATHS
+
+CONFIRMED → RESCHEDULE_PENDING → CONFIRMED
+CONFIRMED → CANCEL_PENDING → CANCELLED
+CONFIRMED → COMPLETED
+CONFIRMED → NO_SHOW
+
+CREATE_PENDING → CREATE_FAILED
+
+RULE:
+Checking availability does NOT reserve the slot.
+
+Before booking:
+- validate opportunity;
+- validate contact requirements;
+- validate eligibility;
+- check duplicate/active booking;
+- validate idempotency;
+- handle slot conflict safely.
+
+AI must never claim a booking succeeded unless backend/provider truth confirms it.
+
+======================================================================
+8. HUMAN HANDOFF CONTRACT
+======================================================================
+
+Handoff is a first-class domain object.
+
+Required conceptual fields:
+
+handoff_id
+prospect_id
+opportunity_id
+call_id / conversation_id
+source_channel
+
+reason_code
+priority
+requested_by
+requested_at
+
+caller_name
+location
+primary_intent
+qualification_state
+main_objection
+
+conversation_summary
+questions_asked
+topics_answered
+unresolved_questions
+
+sensitive_topic_detected
+caller_explicitly_requested_human
+
+recommended_next_action
+
+transfer_mode
+transfer_destination_alias
+transfer_result
+
+assigned_owner
+handoff_status
+claimed_at
+resolved_at
+resolution_notes
+
+CANONICAL REASON CODES
+
+EXPLICIT_HUMAN_REQUEST
+SENSITIVE_OR_CLINICAL
+LOW_CONFIDENCE
+UNSUPPORTED_KNOWLEDGE
+HIGH_VALUE_OPPORTUNITY
+CALLER_FRUSTRATION
+BOOKING_FAILURE
+TOOL_FAILURE
+CONFLICTING_INTENT
+OUT_OF_SCOPE
+
+WEB-CALL LIMITATION
+- Initial web-call testing can prove handoff detection, object creation, and queueing.
+- Actual PSTN phone transfer must not be claimed as tested until telephony is added and verified.
+
+======================================================================
+9. INITIAL RETELL TOOL CONTRACTS
+======================================================================
+
+Keep the real-time tool surface deliberately small.
+
+A. capture_prospect_context_v1
+
+Purpose:
+- persist non-critical identity/context information.
+
+Backend owns:
+- normalization;
+- matching;
+- prospect/opportunity creation/resolution;
+- allowed actions.
+
+Expected response concepts:
+- prospect_id
+- opportunity_id
+- identity_resolution
+- current_lifecycle_state
+- allowed_actions
+
+B. check_appointment_availability_v1
+
+Input concepts:
+- opportunity_id
+- event_type_code
+- requested_timezone
+- window_start
+- window_end
+
+Output statuses:
+- AVAILABLE
+- NO_AVAILABILITY
+- HUMAN_REQUIRED
+- PROVIDER_ERROR
+
+Return a short slot list.
+
+Each slot should include an opaque slot_token.
+
+The model must not manufacture arbitrary booking timestamps.
+
+C. create_appointment_v1
+
+Input concepts:
+- opportunity_id
+- slot_token
+- attendee_name
+- attendee_email
+- attendee_timezone
+- booking_request_id
+
+Backend must validate:
+- opportunity eligibility
+- current lifecycle
+- duplicate/active appointment
+- idempotency
+- slot token
+- required contact data
+
+Output statuses:
+- BOOKED
+- ALREADY_BOOKED
+- SLOT_UNAVAILABLE
+- HUMAN_REQUIRED
+- PROVIDER_ERROR
+
+Successful response includes:
+- local appointment_id
+- provider booking UID
+
+D. request_human_handoff_v1
+
+Input concepts:
+- opportunity_id
+- call_id
+- reason_code
+- caller_requested
+- brief_context
+
+Output statuses:
+- QUEUE_ONLY
+- TRANSFER_ALLOWED
+- ALREADY_REQUESTED
+- HUMAN_REQUIRED
+
+Web calls:
+- QUEUE_ONLY where appropriate.
+
+Future real phone calls:
+- backend determines transfer permission;
+- Retell executes actual provider transfer.
+
+IDEMPOTENCY REQUIREMENT
+- Retell/custom-tool retries must never create duplicate bookings or duplicate side effects.
+- Every side-effecting tool must have an idempotency contract.
+
+======================================================================
+10. AI STRUCTURED OUTPUT CONTRACTS
+======================================================================
+
+AI inference must remain separate from system truth.
+
+A. IntentInterpretationV1
+
+Fields:
+- primary_intent
+- secondary_intents[]
+- location
+- commercial_goal
+- qualification_signals[]
+- sensitive_topic_detected
+- human_requested
+- confidence
+
+Allowed primary_intent values:
+- PROFESSIONAL_TRAINING
+- BUSINESS_PARTNERSHIP
+- GENERAL_SERVICE
+- UNKNOWN
+
+B. PostCallAnalysisV1
+
+Fields:
+- summary
+- primary_intent
+- qualification_result
+- main_objection
+- questions_asked[]
+- unresolved_questions[]
+- sensitive_topic_detected
+- caller_requested_human
+- booking_discussed
+- booking_outcome
+- recommended_next_action
+- follow_up_required
+- confidence
+
+AI must NOT authoritatively output:
+- prospect IDs
+- appointment IDs
+- DND state
+- contact eligibility
+- lifecycle state mutation
+- duplicate status
+- booking truth
+
+======================================================================
+11. KNOWLEDGE-BASE ARCHITECTURE
+======================================================================
+
+Canonical business knowledge lives in the project repository as controlled/versioned Markdown.
+
+Retell's knowledge base is a published runtime copy, not the sole source of truth.
+
+Example source IDs:
+
+KB-TRAIN-001
+KB-TRAIN-PRICING-001
+KB-PARTNER-001
+KB-BOOKING-001
+KB-ESCALATION-001
+KB-RESTRICTED-001
+
+Each knowledge document should have metadata such as:
+- source_code
+- title
+- version
+- approval_status
+- effective_date
+- approved_topics
+- restricted_topics
+- content_hash
+
+Only APPROVED knowledge versions may be published to Retell.
+
+Knowledge categories should eventually include:
+- Training Overview
+- Training Format
+- Training Dates
+- Pricing
+- Eligibility
+- Practical Training
+- FAQs
+- Business Partnership Overview
+- Territory / Region Process
+- Discovery Consultation
+- Booking Process
+- Approved Sales Messaging
+- Human Escalation Rules
+- Restricted Topics
+
+The AI must not invent business facts.
+
+If reliable approved knowledge is unavailable:
+- acknowledge uncertainty;
+- avoid guessing;
+- escalate appropriately.
+
+Preserve knowledge-source traceability where practical.
+
+======================================================================
+12. WEBHOOK / EVENT ARCHITECTURE
+======================================================================
+
+GENERAL RULE
+
+Provider
+→ verify
+→ persist RAW event
+→ acknowledge provider
+→ create canonical/outbox event
+→ asynchronous processing
+
+Do not perform slow AI/n8n processing before safely recording the provider event and acknowledging it.
+
+INITIAL RETELL EVENT SET
+
+- call_started
+- call_ended
+- call_analyzed
+- transfer_started
+- transfer_bridged
+- transfer_cancelled
+- transfer_ended
+
+Do not require continuous transcript_updated processing in the first working version.
+
+======================================================================
+13. IDEMPOTENCY STRATEGY
+======================================================================
+
+Use multiple independent layers.
+
+A. PROVIDER-EVENT IDEMPOTENCY
+Unique key based on stable provider identifiers.
+
+Concept:
+provider + event_type + provider_event_key
+
+Where provider event IDs are unavailable, derive a deterministic key from stable event fields.
+
+B. TOOL-CALL IDEMPOTENCY
+Store:
+- provider_tool_call_id where available;
+- idempotency_key;
+- request_hash;
+- prior outcome.
+
+Same logical tool request should return the prior safe result rather than repeat the side effect.
+
+C. DOMAIN IDEMPOTENCY
+Examples:
+- one active booking for one booking request;
+- one active handoff for the same reason/call unless explicitly reopened;
+- no duplicate prospect-context side effects.
+
+D. EXTERNAL-PROVIDER IDEMPOTENCY
+Before retrying booking creation:
+1. inspect local booking attempt;
+2. inspect known provider UID;
+3. verify whether provider already created the booking;
+4. retry only when safe.
+
+======================================================================
+14. ERROR / FAILURE ARCHITECTURE
+======================================================================
+
+CANONICAL ERROR CLASSES
+
+VALIDATION
+AUTHENTICATION
+DATABASE
+VOICE_PROVIDER
+AI_PROVIDER
+KNOWLEDGE
+BOOKING_PROVIDER
+TELEPHONY
+SMS_PROVIDER
+NOTIFICATION
+WEBHOOK
+STATE_CONFLICT
+
+Every failure should support:
+- correlation_id
+- entity_reference
+- retryable
+- severity
+- error_code
+- sanitized_message
+- attempt_count
+- first_seen_at
+- last_seen_at
+- resolution_status
+
+SYNCHRONOUS RULE
+If booking/tool execution fails:
+- never tell the caller it succeeded;
+- return a controlled failure result;
+- offer a safe alternative or human follow-up.
+
+ASYNC RULES
+- Notification failure must not revert a valid booking.
+- Post-call analysis failure must not erase the original call.
+- n8n downtime must not silently lose the provider event because the raw event has already been persisted.
+- No lead/opportunity should silently disappear because one automation failed.
+
+======================================================================
+15. CONSENT / DND / CONTACT ELIGIBILITY
+======================================================================
+
+Contact eligibility is separate from opportunity lifecycle.
+
+The system must answer, per channel/purpose:
+
+- Can we respond inbound?
+- Can we proactively call?
+- Can we proactively SMS?
+- Can we reactivate?
+- Why?
+- What provenance supports the answer?
+
+Canonical eligibility result:
+
+ELIGIBLE
+REVIEW_REQUIRED
+INELIGIBLE
+
+Important:
+- outbound_sms_eligible = false does not automatically mean inbound calls must be refused.
+- explicit deterministic opt-outs must immediately stop future applicable outreach.
+- AI may interpret ambiguous language.
+- AI may never reverse a deterministic opt-out or DND decision.
+- The portfolio should describe this as a technical eligibility control system, not claim it independently guarantees legal/regulatory compliance.
+
+======================================================================
+16. DORMANT REACTIVATION — DESIGN ONLY
+======================================================================
+
+DO NOT BUILD UNTIL PHASE 7.
+
+Future architecture:
+
+Historical opportunity pool
+→ data-quality checks
+→ deterministic eligibility
+→ ELIGIBLE / REVIEW / EXCLUDED
+→ reason-aware segmentation
+→ campaign membership snapshot
+→ re-check eligibility immediately before every attempt
+→ controlled pacing/batch limits
+→ Twilio SMS / optional voice
+→ reply
+→ deterministic opt-out check
+→ AI interpretation where needed
+→ new/reopened commercial opportunity
+→ booking / human handoff / stop
+
+Before every outbound attempt re-check:
+- DND
+- unsubscribe
+- wrong number
+- existing customer/won state
+- active appointment
+- active human ownership
+- cooldown
+- campaign/contact caps
+- valid channel
+- current eligibility
+
+An old eligibility snapshot is not permanent permission.
+
+======================================================================
+17. CONTROLLED IMPLEMENTATION SEQUENCE
+======================================================================
+
+PHASE 1 — Architecture & Foundation
+STATUS: LOCKED
+
+- platform decisions
+- responsibilities
+- authoritative architecture
+- canonical data model
+- lifecycle models
+- tool contracts
+- structured AI contracts
+- knowledge model
+- events
+- idempotency
+- failure architecture
+- eligibility
+- reactivation design
+- cost/account requirements
+
+PHASE 2A — Infrastructure Foundation
+- Supabase project
+- PostgreSQL schema/migrations
+- constraints
+- knowledge files
+- application-service skeleton
+- idempotency tests
+
+GATE:
+Database/state/idempotency foundation verified.
+
+PHASE 2B — Inbound Web Voice
+- Retell Conversation Flow
+- greeting
+- intent
+- interruptions
+- approved knowledge
+- sensitive-topic fallback
+- persistent context tools
+
+GATE:
+Core conversational test suite passes.
+
+PHASE 3 — Voice Appointment Booking
+- Cal.com adapter
+- availability
+- slot token
+- caller confirmation
+- real test booking
+- duplicate booking protection
+- unavailable-slot handling
+
+GATE:
+Real Cal.com booking and idempotency proven.
+
+PHASE 4 — Post-Call Intelligence & CRM State
+- call-ended/analyzed processing
+- transcript/reference persistence
+- structured post-call analysis
+- opportunity-state updates
+- AI-decision audit
+
+GATE:
+Database state reconciles with actual call evidence.
+
+PHASE 5 — Human Handoff + Failure Handling
+- handoff queue
+- explicit human request
+- sensitive/clinical escalation
+- low-confidence escalation
+- booking/tool failure
+- operator notification
+- failure controls
+
+Web calls prove:
+- handoff detection
+- queue creation
+- handoff contract
+
+Do not claim real PSTN transfer until later verified.
+
+PHASE 6 — Twilio Missed-Call Recovery
+- introduce Australian Twilio number
+- connect voice transport to Retell
+- verify real phone call behavior
+- verify phone transfer
+- missed-call event handling
+- direct Twilio recovery SMS
+- controlled reply handling
+
+PHASE 7 — Dormant Lead Reactivation
+- data health
+- deterministic eligibility
+- segmentation
+- reason-aware outreach
+- pacing
+- reply handling
+- opt-out
+- booking/handoff
+
+PHASE 8 — Appointment / No-Show Recovery
+- cancellation
+- reschedule
+- no-show handling
+- controlled follow-up
+
+PHASE 9 — Operations Dashboard
+- Next.js/React if justified
+- operator metrics
+- prospect/opportunity detail
+- timeline
+- calls
+- appointments
+- decisions
+- handoffs
+- recovery
+- failures
+
+PHASE 10 — Testing, Documentation & Portfolio Evidence
+- full controlled test matrix
+- sanitized synthetic data
+- screenshots
+- architecture diagrams
+- test evidence
+- documentation
+- professional thumbnail
+- short demo video
+- Upwork portfolio materials
+
+======================================================================
+18. REQUIRED ACCOUNTS / SOFTWARE
+======================================================================
+
+CORE
+
+RETELL AI
+- account required
+- no phone number initially
+
+SUPABASE
+- free project initially
+
+CAL.COM
+- Platform Starter/free developer path
+- API v2
+- one fictional 30-minute Meridian Discovery Consultation event type
+
+N8N
+- existing self-hosted n8n
+
+OPENAI API
+- optional initially
+- recommended by post-call structured intelligence if required
+
+LOCAL TOOLS
+- Windows 11
+- PowerShell
+- Git
+- current Node.js LTS
+- VS Code or equivalent
+- Supabase CLI
+- Docker Desktop only if local Supabase/Edge Function emulation is desired/needed
+
+LATER
+
+TWILIO
+- account
+- Australian number
+- Account SID
+- Auth Token
+
+SECRETS
+Never commit secrets to Git.
+
+Likely environment secrets:
+- RETELL_API_KEY
+- Supabase project/server credentials
+- CAL_API_KEY
+- OPENAI_API_KEY
+- later TWILIO_ACCOUNT_SID
+- later TWILIO_AUTH_TOKEN
+
+======================================================================
+19. DEVELOPMENT COST BASELINE
+======================================================================
+
+PRE-TWILIO TARGET
+
+Expected practical test/development allowance:
+USD $0–$30 for Phases 1–5.
+
+Reason:
+- Supabase free tier initially
+- existing n8n
+- Cal.com developer/free allowance initially
+- Retell free credits first, then usage
+- direct structured LLM use should be small during controlled testing
+
+AFTER TWILIO INTRODUCTION
+
+Target total incremental development/testing spend:
+approximately USD $10–$45 through initial controlled telephony testing.
+
+Do not introduce paid scale or campaign volume merely for portfolio appearance.
+
+======================================================================
+20. NON-NEGOTIABLE PROJECT RULES
+======================================================================
+
+1. This is a fresh system.
+Do not rebuild the previous GHL + n8n project.
+
+2. GoHighLevel is NOT a dependency.
+Do not tell the user to purchase GoHighLevel.
+
+3. The system remains CRM-agnostic.
+
+4. Work one controlled phase at a time.
+
+5. Do not create production code before the relevant architecture phase is agreed.
+
+6. Do not change this locked architecture casually.
+
+7. If a major architectural change becomes necessary:
+- explain the verified reason;
+- explain the impact;
+- obtain agreement before replacing the locked design.
+
+8. Do not invent completed work.
+
+9. Do not claim untested capabilities as working.
+
+10. Give exact current UI paths when external tools are configured.
+
+11. Use deterministic logic whenever the answer/state is already known.
+
+12. AI must not override:
+- DND;
+- consent/contact eligibility;
+- duplicate controls;
+- booking truth;
+- critical lifecycle validation;
+- human ownership.
+
+13. n8n must not be used merely to increase node count.
+
+14. Reliability/business value matter more than visual complexity.
+
+15. Every new end-to-end test must use fresh synthetic prospect data unless the test specifically requires continuity/repeat-caller behavior.
+
+16. Use only fictional/demo people, businesses, calls, bookings, metrics and outcomes.
+
+17. Do not use real patient/customer/private data.
+
+18. The AI must not provide medical advice.
+
+19. Clinical/medical/treatment-suitability/medication/diagnosis/sensitive unsupported questions must escalate safely.
+
+20. The portfolio must not fabricate impressive business results.
+
+======================================================================
+21. LOCKED PHASE 1 SUMMARY
+======================================================================
+
+LOCKED BASELINE:
+
+Voice:
+Retell AI Conversation Flow.
+
+Data:
+Supabase-managed PostgreSQL as authoritative state.
+
+Backend:
+Supabase Edge Functions / portable application-service modules for synchronous tool and API logic.
+
+Orchestration:
+n8n only for asynchronous, scheduled, retry, reporting, notification, recovery, and campaign work.
+
+Booking:
+Cal.com API v2 via developer/platform path.
+
+Telephony:
+No number initially.
+Twilio only after web voice + booking foundation is stable.
+
+Australian SMS:
+Twilio directly.
+
+CRM:
+PostgreSQL demo CRM first with CRM adapter boundary.
+
+Knowledge:
+Version-controlled approved Markdown → published Retell knowledge base.
+
+Identity:
+Prospect identity is separate from commercial opportunity.
+
+Lifecycle:
+Opportunity lifecycle is controlled and deterministic.
+
+Handoff:
+First-class independent object.
+
+Consent/DND:
+Channel-specific eligibility system, separate from lifecycle.
+
+State authority:
+Backend/domain rules, never unrestricted AI authority.
+
+Real-time tools:
+Retell → application service.
+Do not route synchronous critical booking calls through n8n.
+
+Provider events:
+Persist raw event first.
+Acknowledge provider.
+Process asynchronously second.
+
+Reactivation:
+Designed now.
+Do not implement until Phase 7.
+
+Initial pre-Twilio cost target:
+approximately USD $0–$30.
+
+======================================================================
+22. NEXT STEP WHEN DEVELOPMENT RESUMES
+======================================================================
+
+Do NOT create the Retell agent yet.
+
+The next controlled phase is:
+
+PHASE 2A — INFRASTRUCTURE FOUNDATION
+
+First tasks:
+1. Confirm/create the Supabase project.
+2. Confirm/create the Cal.com developer/platform account and 30-minute fictional test event type.
+3. Confirm Retell account availability.
+4. Confirm self-hosted n8n remains accessible.
+5. Define the physical repository/folder structure.
+6. Create the authoritative PostgreSQL migration/schema.
+7. Create the versioned knowledge-source file structure.
+8. Define application-service/tool endpoint contracts in files.
+9. Test database constraints and idempotency before starting the Voice AI agent.
+
+Do not jump to Phase 2B until Phase 2A foundation is verified.
+
+======================================================================
+END OF AUTHORITATIVE ARCHITECTURE LOCK
+======================================================================
