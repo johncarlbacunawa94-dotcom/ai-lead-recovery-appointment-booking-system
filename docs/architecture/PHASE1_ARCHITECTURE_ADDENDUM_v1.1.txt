@@ -1,0 +1,71 @@
+AI LEAD RECOVERY & APPOINTMENT BOOKING SYSTEM
+ARCHITECTURE ADDENDUM v1.1
+Date: 2026-09-01
+
+This addendum clarifies provider-specific implementation details discovered
+during Phase 2A.
+
+It does NOT replace PHASE1_ARCHITECTURE_LOCK_v1.0.txt.
+
+======================================================================
+1. RETELL CUSTOM-FUNCTION TRANSPORT
+======================================================================
+
+For Retell custom functions with "Payload: args only" disabled, Retell sends:
+
+- name
+- call
+- args
+
+The Retell call object contains the provider call_id.
+
+Therefore:
+
+- provider call ID is transport context;
+- provider call ID must not be requested as an LLM-filled function argument;
+- the backend resolves canonical call/prospect/opportunity context;
+- internal database identifiers must not be invented by the model.
+
+Retell requests must be verified using X-Retell-Signature before provider
+transport context is trusted.
+
+======================================================================
+2. RETELL RETRY CLARIFICATION
+======================================================================
+
+Current Retell documentation states that custom-function automatic retries
+are disabled by default.
+
+Retries can be explicitly configured through max_retry.
+
+This corrects the earlier provider-specific assumption that retries occur
+automatically.
+
+The architectural requirement for idempotency remains unchanged.
+
+Initial rule:
+
+- automatic retries remain disabled during first implementation;
+- enable retries only after endpoint idempotency and failure behavior are
+  proven through testing.
+
+======================================================================
+3. CALL-FIRST HUMAN HANDOFF
+======================================================================
+
+A caller may request a human or trigger sensitive-topic escalation before:
+
+- prospect identity is resolved;
+- an opportunity exists.
+
+Migration 002 therefore permits human_handoffs to exist against a canonical
+call or conversation without requiring prospect/opportunity IDs.
+
+If opportunity_id is present, prospect_id remains mandatory.
+
+This preserves the original locked requirement that human escalation is a
+first-class capability and must not depend on unnecessary identity collection.
+
+======================================================================
+END ADDENDUM
+======================================================================

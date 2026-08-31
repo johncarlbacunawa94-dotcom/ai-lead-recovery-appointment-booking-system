@@ -1,0 +1,695 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "contract_version": "1.0",
+  "project": "AI Lead Recovery & Appointment Booking System",
+  "business": "Meridian Professional Training & Services - Demo",
+
+  "transport_contract": {
+    "retell": {
+      "payload_args_only": false,
+
+      "request_envelope": {
+        "required": [
+          "name",
+          "call",
+          "args"
+        ],
+
+        "signature_header": "X-Retell-Signature",
+
+        "trusted_only_after_signature_verification": [
+          "name",
+          "call.call_id",
+          "call.call_type",
+          "call.agent_id",
+          "call.agent_version"
+        ],
+
+        "never_llm_supplied": [
+          "provider_call_id",
+          "canonical_call_id",
+          "correlation_id",
+          "prospect_id",
+          "opportunity_id"
+        ]
+      },
+
+      "canonical_runtime_mapping": {
+        "provider": "RETELL",
+        "provider_call_id": "call.call_id",
+        "provider_call_type": "call.call_type",
+        "function_name": "name",
+        "agent_arguments": "args"
+      },
+
+      "retry_policy": {
+        "provider_default": "NO_AUTOMATIC_RETRY",
+        "rule": "Do not enable provider retries until the endpoint is proven idempotent.",
+        "side_effecting_tools_initial_max_retry": 0,
+        "read_only_tools_initial_max_retry": 0
+      }
+    }
+  },
+
+  "global_error_codes": [
+    "INVALID_REQUEST",
+    "INVALID_SIGNATURE",
+    "CALL_CONTEXT_UNAVAILABLE",
+    "CALL_STATE_CONFLICT",
+    "IDENTITY_AMBIGUOUS",
+    "INSUFFICIENT_IDENTITY",
+    "OPPORTUNITY_UNAVAILABLE",
+    "OPPORTUNITY_STATE_CONFLICT",
+    "CONTACT_INELIGIBLE",
+    "MISSING_REQUIRED_CONTACT",
+    "INVALID_TIMEZONE",
+    "INVALID_TIME_WINDOW",
+    "BOOKING_PROVIDER_UNAVAILABLE",
+    "BOOKING_REQUEST_NOT_FOUND",
+    "SLOT_TOKEN_INVALID",
+    "SLOT_TOKEN_EXPIRED",
+    "SLOT_UNAVAILABLE",
+    "ALREADY_BOOKED",
+    "HANDOFF_ALREADY_ACTIVE",
+    "HUMAN_REQUIRED",
+    "INTERNAL_ERROR"
+  ],
+
+  "global_allowed_actions": [
+    "ASK_FOR_IDENTITY",
+    "CONTINUE_QUALIFICATION",
+    "CHECK_AVAILABILITY",
+    "CONFIRM_BOOKING",
+    "REQUEST_HANDOFF",
+    "WAIT_FOR_HUMAN",
+    "END_CONVERSATION",
+    "NONE"
+  ],
+
+  "tools": {
+
+    "capture_prospect_context_v1": {
+      "purpose": "Resolve or create canonical prospect/opportunity context and persist non-sensitive commercial information collected during the call.",
+
+      "side_effecting": true,
+
+      "runtime_context": {
+        "provider_call_id": "transport.call.call_id",
+        "source_channel": "deterministically derived from transport.call.call_type"
+      },
+
+      "idempotency": {
+        "required": true,
+        "strategy": "Hash provider_call_id + tool_name + normalized agent arguments. Identical replay returns the previous safe result."
+      },
+
+      "agent_arguments_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+
+        "properties": {
+          "first_name": {
+            "type": ["string", "null"],
+            "maxLength": 100
+          },
+
+          "last_name": {
+            "type": ["string", "null"],
+            "maxLength": 100
+          },
+
+          "company_name": {
+            "type": ["string", "null"],
+            "maxLength": 200
+          },
+
+          "phone": {
+            "type": ["string", "null"],
+            "maxLength": 50
+          },
+
+          "email": {
+            "type": ["string", "null"],
+            "maxLength": 320
+          },
+
+          "location_code": {
+            "type": ["string", "null"],
+            "enum": [
+              "BRISBANE",
+              "MELBOURNE",
+              "SYDNEY",
+              "PERTH",
+              "OTHER",
+              "UNKNOWN",
+              null
+            ]
+          },
+
+          "stated_intent": {
+            "type": ["string", "null"],
+            "enum": [
+              "PROFESSIONAL_TRAINING",
+              "BUSINESS_PARTNERSHIP",
+              "GENERAL_SERVICE",
+              "UNKNOWN",
+              null
+            ]
+          }
+        }
+      },
+
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+
+        "required": [
+          "status",
+          "correlation_id",
+          "prospect_id",
+          "opportunity_id",
+          "identity_resolution",
+          "current_lifecycle_state",
+          "allowed_actions",
+          "error_code",
+          "message_for_agent",
+          "retryable"
+        ],
+
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "RESOLVED",
+              "REVIEW_REQUIRED",
+              "REJECTED",
+              "ERROR"
+            ]
+          },
+
+          "correlation_id": {
+            "type": "string"
+          },
+
+          "prospect_id": {
+            "type": ["string", "null"]
+          },
+
+          "opportunity_id": {
+            "type": ["string", "null"]
+          },
+
+          "identity_resolution": {
+            "type": "string",
+            "enum": [
+              "CREATED",
+              "EXACT_MATCH",
+              "AMBIGUOUS",
+              "INSUFFICIENT_IDENTITY"
+            ]
+          },
+
+          "current_lifecycle_state": {
+            "type": ["string", "null"],
+            "enum": [
+              "NEW",
+              "ENGAGED",
+              "QUALIFYING",
+              "QUALIFIED",
+              "BOOKING_READY",
+              "BOOKED",
+              "DORMANT",
+              "WON",
+              "LOST",
+              "CLOSED",
+              null
+            ]
+          },
+
+          "allowed_actions": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "ASK_FOR_IDENTITY",
+                "CONTINUE_QUALIFICATION",
+                "CHECK_AVAILABILITY",
+                "CONFIRM_BOOKING",
+                "REQUEST_HANDOFF",
+                "WAIT_FOR_HUMAN",
+                "END_CONVERSATION",
+                "NONE"
+              ]
+            }
+          },
+
+          "error_code": {
+            "type": ["string", "null"]
+          },
+
+          "message_for_agent": {
+            "type": ["string", "null"]
+          },
+
+          "retryable": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+
+
+    "check_appointment_availability_v1": {
+      "purpose": "Validate booking eligibility and retrieve real appointment availability from the configured booking provider.",
+
+      "side_effecting": false,
+
+      "runtime_context": {
+        "provider_call_id": "transport.call.call_id",
+        "opportunity_id": "resolved server-side from canonical call context"
+      },
+
+      "controlled_arguments": {
+        "event_type_code": {
+          "authority": "SYSTEM",
+          "value": "MERIDIAN_DISCOVERY_30",
+          "rule": "The LLM must not invent or choose the internal event type code in version 1."
+        }
+      },
+
+      "idempotency": {
+        "required": true,
+        "strategy": "Equivalent availability requests may safely reuse/cache the prior result for a short validity window."
+      },
+
+      "agent_arguments_schema": {
+        "type": "object",
+        "additionalProperties": false,
+
+        "required": [
+          "requested_timezone",
+          "window_start",
+          "window_end"
+        ],
+
+        "properties": {
+          "requested_timezone": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+
+          "window_start": {
+            "type": "string",
+            "format": "date-time"
+          },
+
+          "window_end": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+
+        "required": [
+          "status",
+          "correlation_id",
+          "booking_request_id",
+          "resolved_timezone",
+          "slots",
+          "allowed_actions",
+          "error_code",
+          "message_for_agent",
+          "retryable"
+        ],
+
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "AVAILABLE",
+              "NO_AVAILABILITY",
+              "HUMAN_REQUIRED",
+              "PROVIDER_ERROR"
+            ]
+          },
+
+          "correlation_id": {
+            "type": "string"
+          },
+
+          "booking_request_id": {
+            "type": ["string", "null"]
+          },
+
+          "resolved_timezone": {
+            "type": ["string", "null"]
+          },
+
+          "slots": {
+            "type": "array",
+            "maxItems": 5,
+
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+
+              "required": [
+                "slot_token",
+                "start_at",
+                "end_at"
+              ],
+
+              "properties": {
+                "slot_token": {
+                  "type": "string",
+                  "minLength": 1
+                },
+
+                "start_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+
+                "end_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          },
+
+          "allowed_actions": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "CHECK_AVAILABILITY",
+                "CONFIRM_BOOKING",
+                "REQUEST_HANDOFF",
+                "WAIT_FOR_HUMAN",
+                "END_CONVERSATION",
+                "NONE"
+              ]
+            }
+          },
+
+          "error_code": {
+            "type": ["string", "null"]
+          },
+
+          "message_for_agent": {
+            "type": ["string", "null"]
+          },
+
+          "retryable": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+
+
+    "create_appointment_v1": {
+      "purpose": "Create exactly one appointment after explicit conversational confirmation and deterministic backend validation.",
+
+      "side_effecting": true,
+
+      "runtime_context": {
+        "provider_call_id": "transport.call.call_id",
+        "prospect_id": "resolved server-side from canonical call context",
+        "opportunity_id": "resolved server-side from canonical call context",
+        "attendee_identity": "resolved server-side from canonical prospect/contact data"
+      },
+
+      "preconditions": [
+        "The Conversation Flow may enter this tool only after the caller explicitly confirms a presented slot.",
+        "The canonical call must resolve to an opportunity.",
+        "Required booking contact data must already be present.",
+        "The opportunity must not already have a conflicting active booking."
+      ],
+
+      "controlled_reference_arguments": {
+        "booking_request_id": {
+          "authority": "PRIOR_TOOL_RESULT",
+          "source": "check_appointment_availability_v1.booking_request_id",
+          "rule": "Must match a valid availability request; never invent."
+        },
+
+        "slot_token": {
+          "authority": "PRIOR_TOOL_RESULT",
+          "source": "check_appointment_availability_v1.slots[].slot_token",
+          "rule": "Must exactly match a valid unexpired slot token; never construct or modify."
+        }
+      },
+
+      "idempotency": {
+        "required": true,
+        "strategy": "booking_request_id is the domain idempotency key. Replays must return the existing booking outcome rather than create another appointment."
+      },
+
+      "agent_arguments_schema": {
+        "type": "object",
+        "additionalProperties": false,
+
+        "required": [
+          "booking_request_id",
+          "slot_token"
+        ],
+
+        "properties": {
+          "booking_request_id": {
+            "type": "string",
+            "minLength": 1
+          },
+
+          "slot_token": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+
+        "required": [
+          "status",
+          "correlation_id",
+          "appointment_id",
+          "provider_booking_uid",
+          "start_at",
+          "end_at",
+          "allowed_actions",
+          "error_code",
+          "message_for_agent",
+          "retryable"
+        ],
+
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "BOOKED",
+              "ALREADY_BOOKED",
+              "SLOT_UNAVAILABLE",
+              "HUMAN_REQUIRED",
+              "PROVIDER_ERROR"
+            ]
+          },
+
+          "correlation_id": {
+            "type": "string"
+          },
+
+          "appointment_id": {
+            "type": ["string", "null"]
+          },
+
+          "provider_booking_uid": {
+            "type": ["string", "null"]
+          },
+
+          "start_at": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+
+          "end_at": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+
+          "allowed_actions": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "CHECK_AVAILABILITY",
+                "REQUEST_HANDOFF",
+                "WAIT_FOR_HUMAN",
+                "END_CONVERSATION",
+                "NONE"
+              ]
+            }
+          },
+
+          "error_code": {
+            "type": ["string", "null"]
+          },
+
+          "message_for_agent": {
+            "type": ["string", "null"]
+          },
+
+          "retryable": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+
+
+    "request_human_handoff_v1": {
+      "purpose": "Create or reuse a human escalation request without requiring identity or opportunity resolution first.",
+
+      "side_effecting": true,
+
+      "runtime_context": {
+        "provider_call_id": "transport.call.call_id",
+        "canonical_call_id": "resolved server-side",
+        "prospect_id": "optional; resolved server-side when available",
+        "opportunity_id": "optional; resolved server-side when available"
+      },
+
+      "idempotency": {
+        "required": true,
+        "strategy": "Active handoff uniqueness is based on canonical call/conversation + reason. Repeated equivalent requests return the existing handoff."
+      },
+
+      "agent_arguments_schema": {
+        "type": "object",
+        "additionalProperties": false,
+
+        "required": [
+          "reason_code",
+          "caller_requested"
+        ],
+
+        "properties": {
+          "reason_code": {
+            "type": "string",
+            "enum": [
+              "EXPLICIT_HUMAN_REQUEST",
+              "SENSITIVE_OR_CLINICAL",
+              "LOW_CONFIDENCE",
+              "UNSUPPORTED_KNOWLEDGE",
+              "HIGH_VALUE_OPPORTUNITY",
+              "CALLER_FRUSTRATION",
+              "BOOKING_FAILURE",
+              "TOOL_FAILURE",
+              "CONFLICTING_INTENT",
+              "OUT_OF_SCOPE"
+            ]
+          },
+
+          "caller_requested": {
+            "type": "boolean"
+          },
+
+          "brief_context": {
+            "type": ["string", "null"],
+            "maxLength": 1000
+          }
+        }
+      },
+
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+
+        "required": [
+          "status",
+          "correlation_id",
+          "handoff_id",
+          "transfer_mode",
+          "transfer_destination_alias",
+          "allowed_actions",
+          "error_code",
+          "message_for_agent",
+          "retryable"
+        ],
+
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "QUEUE_ONLY",
+              "TRANSFER_ALLOWED",
+              "ALREADY_REQUESTED",
+              "HUMAN_REQUIRED",
+              "ERROR"
+            ]
+          },
+
+          "correlation_id": {
+            "type": "string"
+          },
+
+          "handoff_id": {
+            "type": ["string", "null"]
+          },
+
+          "transfer_mode": {
+            "type": ["string", "null"],
+            "enum": [
+              "NONE",
+              "QUEUE_ONLY",
+              "WARM",
+              "COLD",
+              null
+            ]
+          },
+
+          "transfer_destination_alias": {
+            "type": ["string", "null"]
+          },
+
+          "allowed_actions": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "WAIT_FOR_HUMAN",
+                "END_CONVERSATION",
+                "NONE"
+              ]
+            }
+          },
+
+          "error_code": {
+            "type": ["string", "null"]
+          },
+
+          "message_for_agent": {
+            "type": ["string", "null"]
+          },
+
+          "retryable": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}
