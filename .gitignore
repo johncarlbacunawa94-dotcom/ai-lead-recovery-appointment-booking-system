@@ -1,0 +1,41 @@
+﻿# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Supabase local state
+.supabase/
+supabase/.temp/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs / runtime artifacts
+logs/
+*.log
+
+# Test/runtime temporary data
+tmp/
+temp/
+
+# Private provider exports
+private/
+secrets/
+
+# Never commit real customer data
+data/private/
