@@ -1,0 +1,21 @@
+{
+  "name": "ai-lead-recovery-appointment-booking-system",
+  "version": "1.0.0",
+  "description": "Professional portfolio demonstration for:",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "private": "true",
+  "devDependencies": {
+    "supabase": "^2.116.0"
+  }
+}
