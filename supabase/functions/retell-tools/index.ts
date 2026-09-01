@@ -363,6 +363,7 @@ export default {
             await handleCaptureProspectContext(
               runtimeContext,
               envelope.args,
+              ctx.supabaseAdmin,
             );
 
           break;
