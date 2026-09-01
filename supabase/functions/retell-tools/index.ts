@@ -17,6 +17,10 @@ import {
   verifyRetellSignature,
 } from "../_shared/retell-signature.ts";
 
+import {
+  validateRetellToolArgs,
+} from "../_shared/retell-tool-args.ts";
+
 import type {
   ToolRuntimeContext,
 } from "../_shared/tool-runtime-context.ts";
@@ -75,11 +79,8 @@ export default {
 
 
       // ------------------------------------------------------------
-      // IMPORTANT:
-      // Read body exactly once as RAW TEXT.
-      //
-      // Signature verification MUST occur against this exact text.
-      // Do not call req.json() before signature verification.
+      // Read the exact raw body once.
+      // Signature verification happens before JSON parsing.
       // ------------------------------------------------------------
 
       let rawBody: string;
@@ -109,10 +110,6 @@ export default {
       }
 
 
-      // ------------------------------------------------------------
-      // Provider secret
-      // ------------------------------------------------------------
-
       const retellApiKey =
         Deno.env.get(
           "RETELL_API_KEY",
@@ -135,10 +132,6 @@ export default {
         );
       }
 
-
-      // ------------------------------------------------------------
-      // Retell signature verification
-      // ------------------------------------------------------------
 
       const signature =
         req.headers.get(
@@ -174,7 +167,7 @@ export default {
 
 
       // ------------------------------------------------------------
-      // Parse trusted provider envelope AFTER signature verification.
+      // Parse signed provider envelope.
       // ------------------------------------------------------------
 
       const parsed =
@@ -208,6 +201,42 @@ export default {
 
       const envelope =
         parsed.value;
+
+
+      // ------------------------------------------------------------
+      // Contract enforcement.
+      //
+      // Agent arguments must conform exactly to the approved tool
+      // contract before any domain handler is allowed to execute.
+      // ------------------------------------------------------------
+
+      const argumentValidation =
+        validateRetellToolArgs(
+          envelope.name,
+          envelope.args,
+        );
+
+
+      if (!argumentValidation.ok) {
+        logEvent({
+          level: "warning",
+          event:
+            "retell_tool_arguments_rejected",
+          tool_name:
+            envelope.name,
+          issues:
+            argumentValidation.issues,
+          correlation_id:
+            correlationId,
+        });
+
+        return errorResponse(
+          400,
+          "INVALID_REQUEST",
+          "Function arguments do not match the approved contract.",
+          correlationId,
+        );
+      }
 
 
       const runtimeContext:
@@ -251,10 +280,6 @@ export default {
           envelope.call.call_type,
       });
 
-
-      // ------------------------------------------------------------
-      // Deterministic router
-      // ------------------------------------------------------------
 
       let result:
         Record<string, unknown>;
