@@ -21,6 +21,10 @@ import {
   validateRetellToolArgs,
 } from "../_shared/retell-tool-args.ts";
 
+import {
+  resolveCanonicalRetellCall,
+} from "../_shared/canonical-call.ts";
+
 import type {
   ToolRuntimeContext,
 } from "../_shared/tool-runtime-context.ts";
@@ -63,36 +67,33 @@ export default {
 
     async (
       req,
-      _ctx,
+      ctx,
     ) => {
-      const correlationId =
+      const requestCorrelationId =
         crypto.randomUUID();
+
 
       if (req.method !== "POST") {
         return errorResponse(
           405,
           "INVALID_REQUEST",
           "Only POST is supported.",
-          correlationId,
+          requestCorrelationId,
         );
       }
 
 
-      // ------------------------------------------------------------
-      // Read the exact raw body once.
-      // Signature verification happens before JSON parsing.
-      // ------------------------------------------------------------
-
       let rawBody: string;
 
       try {
-        rawBody = await req.text();
+        rawBody =
+          await req.text();
       } catch {
         return errorResponse(
           400,
           "INVALID_REQUEST",
           "Request body could not be read.",
-          correlationId,
+          requestCorrelationId,
         );
       }
 
@@ -105,7 +106,7 @@ export default {
           413,
           "INVALID_REQUEST",
           "Request body is too large.",
-          correlationId,
+          requestCorrelationId,
         );
       }
 
@@ -115,20 +116,21 @@ export default {
           "RETELL_API_KEY",
         );
 
+
       if (!retellApiKey) {
         logEvent({
           level: "error",
           event:
             "retell_api_key_missing",
-          correlation_id:
-            correlationId,
+          request_correlation_id:
+            requestCorrelationId,
         });
 
         return errorResponse(
           503,
           "INTERNAL_ERROR",
           "Voice tool service is unavailable.",
-          correlationId,
+          requestCorrelationId,
         );
       }
 
@@ -137,6 +139,7 @@ export default {
         req.headers.get(
           "X-Retell-Signature",
         );
+
 
       const verification =
         await verifyRetellSignature(
@@ -153,22 +156,18 @@ export default {
             "retell_signature_rejected",
           reason:
             verification.reason,
-          correlation_id:
-            correlationId,
+          request_correlation_id:
+            requestCorrelationId,
         });
 
         return errorResponse(
           401,
           "INVALID_SIGNATURE",
           "Unauthorized.",
-          correlationId,
+          requestCorrelationId,
         );
       }
 
-
-      // ------------------------------------------------------------
-      // Parse signed provider envelope.
-      // ------------------------------------------------------------
 
       const parsed =
         parseRetellToolEnvelope(
@@ -183,8 +182,8 @@ export default {
             "retell_envelope_rejected",
           error_code:
             parsed.errorCode,
-          correlation_id:
-            correlationId,
+          request_correlation_id:
+            requestCorrelationId,
         });
 
         return errorResponse(
@@ -192,9 +191,10 @@ export default {
               "UNSUPPORTED_TOOL"
             ? 404
             : 400,
+
           parsed.errorCode,
           parsed.message,
-          correlationId,
+          requestCorrelationId,
         );
       }
 
@@ -202,13 +202,6 @@ export default {
       const envelope =
         parsed.value;
 
-
-      // ------------------------------------------------------------
-      // Contract enforcement.
-      //
-      // Agent arguments must conform exactly to the approved tool
-      // contract before any domain handler is allowed to execute.
-      // ------------------------------------------------------------
 
       const argumentValidation =
         validateRetellToolArgs(
@@ -226,22 +219,76 @@ export default {
             envelope.name,
           issues:
             argumentValidation.issues,
-          correlation_id:
-            correlationId,
+          request_correlation_id:
+            requestCorrelationId,
         });
 
         return errorResponse(
           400,
           "INVALID_REQUEST",
           "Function arguments do not match the approved contract.",
-          correlationId,
+          requestCorrelationId,
         );
       }
 
 
+      // ------------------------------------------------------------
+      // Canonical call identity boundary.
+      //
+      // Signed provider call_id is resolved into a server-owned
+      // public.calls.call_id before any business handler executes.
+      // ------------------------------------------------------------
+
+      const callResolution =
+        await resolveCanonicalRetellCall(
+          ctx.supabaseAdmin,
+          envelope.call,
+        );
+
+
+      if (!callResolution.ok) {
+        logEvent({
+          level: "error",
+          event:
+            "canonical_call_resolution_failed",
+          error_code:
+            callResolution.errorCode,
+          provider_call_id:
+            envelope.call.call_id,
+          request_correlation_id:
+            requestCorrelationId,
+        });
+
+
+        const status =
+          callResolution.errorCode ===
+              "INTERNAL_ERROR"
+            ? 500
+            : 409;
+
+
+        return errorResponse(
+          status,
+          callResolution.errorCode,
+
+          status === 500
+            ? "Voice tool service is unavailable."
+            : "Call context could not be resolved safely.",
+
+          requestCorrelationId,
+        );
+      }
+
+
+      const canonicalCall =
+        callResolution.call;
+
+
       const runtimeContext:
         ToolRuntimeContext = {
-          correlationId,
+
+          correlationId:
+            requestCorrelationId,
 
           provider:
             "RETELL",
@@ -251,6 +298,18 @@ export default {
 
           providerCallType:
             envelope.call.call_type,
+
+          canonicalCallId:
+            canonicalCall.call_id,
+
+          canonicalCallCorrelationId:
+            canonicalCall.correlation_id,
+
+          prospectId:
+            canonicalCall.prospect_id,
+
+          opportunityId:
+            canonicalCall.opportunity_id,
 
           agentId:
             envelope.call.agent_id ??
@@ -269,15 +328,25 @@ export default {
       logEvent({
         level: "info",
         event:
-          "retell_tool_request_verified",
-        correlation_id:
-          correlationId,
-        tool_name:
-          envelope.name,
+          "canonical_call_resolved",
+
+        disposition:
+          callResolution.disposition,
+
         provider_call_id:
           envelope.call.call_id,
-        provider_call_type:
-          envelope.call.call_type,
+
+        canonical_call_id:
+          canonicalCall.call_id,
+
+        canonical_call_status:
+          canonicalCall.status,
+
+        request_correlation_id:
+          requestCorrelationId,
+
+        call_correlation_id:
+          canonicalCall.correlation_id,
       });
 
 
@@ -341,7 +410,7 @@ export default {
             404,
             "UNSUPPORTED_TOOL",
             "Function name is not supported.",
-            correlationId,
+            requestCorrelationId,
           );
       }
 
@@ -350,10 +419,19 @@ export default {
         level: "info",
         event:
           "retell_tool_request_completed",
-        correlation_id:
-          correlationId,
+
+        request_correlation_id:
+          requestCorrelationId,
+
+        call_correlation_id:
+          canonicalCall.correlation_id,
+
+        canonical_call_id:
+          canonicalCall.call_id,
+
         tool_name:
           envelope.name,
+
         status:
           result.status ??
           "UNKNOWN",

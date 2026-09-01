@@ -9,9 +9,25 @@ export type ToolRuntimeContext = {
     | "web_call"
     | "phone_call";
 
-  agentId: string | null;
+  canonicalCallId: string;
 
-  agentVersion: number | null;
+  canonicalCallCorrelationId: string;
+
+  prospectId:
+    | string
+    | null;
+
+  opportunityId:
+    | string
+    | null;
+
+  agentId:
+    | string
+    | null;
+
+  agentVersion:
+    | number
+    | null;
 
   direction:
     | "inbound"
