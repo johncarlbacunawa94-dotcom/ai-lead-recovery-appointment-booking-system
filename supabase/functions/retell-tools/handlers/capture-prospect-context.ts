@@ -434,7 +434,7 @@ export async function handleCaptureProspectContext(
     error,
   } = await supabaseAdmin
     .rpc(
-      "resolve_capture_context_v1",
+      "resolve_capture_context_v2",
 
       {
         p_call_id:
@@ -466,6 +466,9 @@ export async function handleCaptureProspectContext(
 
         p_stated_intent:
           normalized.statedIntent,
+
+        p_initial_enquiry_summary:
+          normalized.initialEnquirySummary,
       },
     )
     .single();

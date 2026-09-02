@@ -156,6 +156,12 @@
               "UNKNOWN",
               null
             ]
+          },
+
+          "initial_enquiry_summary": {
+            "type": ["string", "null"],
+            "maxLength": 1000,
+            "description": "Concise non-sensitive summary of the caller-provided business need or enquiry. Use only information the caller actually provided. Do not include medical, clinical, diagnostic, treatment, medication, or other sensitive health information."
           }
         }
       },

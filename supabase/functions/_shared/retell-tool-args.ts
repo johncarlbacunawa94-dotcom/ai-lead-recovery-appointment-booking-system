@@ -179,6 +179,7 @@ function validateCaptureProspectContext(
     "email",
     "location_code",
     "stated_intent",
+    "initial_enquiry_summary",
   ] as const;
 
   const issues = unexpectedKeys(
@@ -281,6 +282,18 @@ function validateCaptureProspectContext(
   ) {
     issues.push(
       "stated_intent is invalid",
+    );
+  }
+
+  if (
+    "initial_enquiry_summary" in args &&
+    !isNullableString(
+      args.initial_enquiry_summary,
+      1000,
+    )
+  ) {
+    issues.push(
+      "initial_enquiry_summary is invalid",
     );
   }
 

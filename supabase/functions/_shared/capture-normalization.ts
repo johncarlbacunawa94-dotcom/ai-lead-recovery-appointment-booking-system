@@ -16,6 +16,7 @@ export type NormalizedCaptureArguments = {
 
   locationCode: string | null;
   statedIntent: string | null;
+  initialEnquirySummary: string | null;
 
   hashArguments: {
     first_name: string | null;
@@ -25,6 +26,7 @@ export type NormalizedCaptureArguments = {
     email: string | null;
     location_code: string | null;
     stated_intent: string | null;
+    initial_enquiry_summary: string | null;
   };
 };
 
@@ -209,6 +211,11 @@ export function normalizeCaptureArguments(
       args.stated_intent,
     );
 
+  const initialEnquirySummary =
+    normalizedText(
+      args.initial_enquiry_summary,
+    );
+
 
   return {
     firstName,
@@ -223,6 +230,8 @@ export function normalizeCaptureArguments(
 
     locationCode,
     statedIntent,
+    initialEnquirySummary,
+
 
     hashArguments: {
       first_name:
@@ -251,6 +260,9 @@ export function normalizeCaptureArguments(
 
       stated_intent:
         statedIntent,
+      initial_enquiry_summary:
+        initialEnquirySummary,
+
     },
   };
 }
