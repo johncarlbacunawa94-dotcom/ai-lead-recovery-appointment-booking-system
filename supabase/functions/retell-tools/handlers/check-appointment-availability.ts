@@ -340,6 +340,104 @@ async function validateBookingContext(
   }
 
 
+  // --------------------------------------------------------------------------
+  // Deterministic booking-readiness gate.
+  //
+  // Retell does not own lifecycle or qualification state. The backend validates
+  // the canonical call/prospect/opportunity context and performs the permitted
+  // transition before any Cal.com availability request is made.
+  // --------------------------------------------------------------------------
+
+  const {
+    data: readinessData,
+    error: readinessError,
+  } = await supabaseAdmin
+    .rpc(
+      "prepare_booking_readiness_v1",
+      {
+        p_canonical_call_id:
+          context.canonicalCallId,
+
+        p_prospect_id:
+          context.prospectId,
+
+        p_opportunity_id:
+          context.opportunityId,
+      },
+    )
+    .single();
+
+
+  if (
+    readinessError ||
+    !readinessData
+  ) {
+    return {
+      ok: false,
+
+      response:
+        humanRequiredResponse(
+          context.correlationId,
+          requestedTimezone,
+          "BOOKING_READINESS_UNAVAILABLE",
+          "Booking readiness could not be validated safely. Do not offer appointment times. Request human follow-up.",
+        ),
+    };
+  }
+
+
+  const readiness =
+    readinessData as {
+      result_status:
+        string;
+
+      current_lifecycle_state:
+        string | null;
+
+      current_qualification_state:
+        string | null;
+
+      error_code:
+        string | null;
+    };
+
+
+  if (
+    readiness.result_status !==
+      "READY" &&
+    readiness.result_status !==
+      "ALREADY_READY"
+  ) {
+    const readinessErrorCode =
+      readiness.error_code ??
+      "BOOKING_READINESS_REJECTED";
+
+
+    const readinessMessage =
+      readinessErrorCode ===
+        "MISSING_BOOKING_EMAIL"
+        ? "A usable email address is required before appointment availability can be checked. Do not invent contact information."
+        : readinessErrorCode ===
+            "ALREADY_BOOKED" ||
+          readinessErrorCode ===
+            "ACTIVE_APPOINTMENT_EXISTS"
+        ? "An active appointment already exists for this opportunity. Do not offer or create another appointment."
+        : "This opportunity cannot proceed to appointment availability automatically. Do not offer appointment times. Request human follow-up.";
+
+
+    return {
+      ok: false,
+
+      response:
+        humanRequiredResponse(
+          context.correlationId,
+          requestedTimezone,
+          readinessErrorCode,
+          readinessMessage,
+        ),
+    };
+  }
+
   const {
     data: opportunity,
     error: opportunityError,
