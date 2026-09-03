@@ -389,6 +389,7 @@ export default {
             await handleCreateAppointment(
               runtimeContext,
               envelope.args,
+              ctx.supabaseAdmin,
             );
 
           break;
