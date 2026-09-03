@@ -376,6 +376,7 @@ export default {
             await handleCheckAppointmentAvailability(
               runtimeContext,
               envelope.args,
+              ctx.supabaseAdmin,
             );
 
           break;
