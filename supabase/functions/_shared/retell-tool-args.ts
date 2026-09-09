@@ -475,6 +475,11 @@ function validateAvailability(
         "window_start must precede window_end",
       );
     }
+  if (end <= Date.now()) {
+    issues.push(
+      "availability window must not be entirely in the past",
+    );
+  }
   }
 
   return issues;
