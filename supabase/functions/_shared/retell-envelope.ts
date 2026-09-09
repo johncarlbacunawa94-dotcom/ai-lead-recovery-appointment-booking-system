@@ -1,5 +1,6 @@
 export const RETELL_TOOL_NAMES = [
   "capture_prospect_context_v1",
+  "correct_primary_email_v1",
   "check_appointment_availability_v1",
   "create_appointment_v1",
   "request_human_handoff_v1",

@@ -82,6 +82,63 @@ function isNonEmptyString(
 }
 
 
+function isValidEmailAddress(
+  value: unknown,
+): value is string {
+  if (
+    !isNonEmptyString(
+      value,
+      320,
+    )
+  ) {
+    return false;
+  }
+
+
+  const candidate =
+    value
+      .normalize("NFKC")
+      .trim()
+      .toLocaleLowerCase(
+        "en-AU",
+      );
+
+
+  if (
+    candidate.length === 0 ||
+    /\s/.test(candidate)
+  ) {
+    return false;
+  }
+
+
+  const parts =
+    candidate.split("@");
+
+
+  if (
+    parts.length !== 2
+  ) {
+    return false;
+  }
+
+
+  const [
+    localPart,
+    domainPart,
+  ] = parts;
+
+
+  return (
+    localPart.length > 0 &&
+    domainPart.length > 0 &&
+    domainPart.includes(".") &&
+    !domainPart.startsWith(".") &&
+    !domainPart.endsWith(".")
+  );
+}
+
+
 function isDateTimeWithZone(
   value: unknown,
 ): value is string {
@@ -296,6 +353,45 @@ function validateCaptureProspectContext(
       "initial_enquiry_summary is invalid",
     );
   }
+
+  return issues;
+}
+
+
+function validateCorrectPrimaryEmail(
+  args: Record<string, unknown>,
+): string[] {
+  const allowed = [
+    "corrected_email",
+  ] as const;
+
+  const required = [
+    "corrected_email",
+  ] as const;
+
+  const issues = [
+    ...unexpectedKeys(
+      args,
+      allowed,
+    ),
+    ...missingKeys(
+      args,
+      required,
+    ),
+  ];
+
+
+  if (
+    "corrected_email" in args &&
+    !isValidEmailAddress(
+      args.corrected_email,
+    )
+  ) {
+    issues.push(
+      "corrected_email is invalid",
+    );
+  }
+
 
   return issues;
 }
@@ -524,6 +620,17 @@ export function validateRetellToolArgs(
 
       issues =
         validateCaptureProspectContext(
+          args,
+        );
+
+      break;
+
+
+    case
+      "correct_primary_email_v1":
+
+      issues =
+        validateCorrectPrimaryEmail(
           args,
         );
 

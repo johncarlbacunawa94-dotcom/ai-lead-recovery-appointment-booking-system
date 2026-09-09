@@ -34,6 +34,10 @@ import {
 } from "./handlers/capture-prospect-context.ts";
 
 import {
+  handleCorrectPrimaryEmail,
+} from "./handlers/correct-primary-email.ts";
+
+import {
   handleCheckAppointmentAvailability,
 } from "./handlers/check-appointment-availability.ts";
 
@@ -361,6 +365,19 @@ export default {
 
           result =
             await handleCaptureProspectContext(
+              runtimeContext,
+              envelope.args,
+              ctx.supabaseAdmin,
+            );
+
+          break;
+
+
+        case
+          "correct_primary_email_v1":
+
+          result =
+            await handleCorrectPrimaryEmail(
               runtimeContext,
               envelope.args,
               ctx.supabaseAdmin,
