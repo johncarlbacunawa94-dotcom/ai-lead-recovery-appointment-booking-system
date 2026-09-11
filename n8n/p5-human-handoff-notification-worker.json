@@ -1,0 +1,296 @@
+{
+  "name": "P5 — Human Handoff Notification Worker",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "dafacb6e-10c3-456c-b69a-45446acde7f6",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        176
+      ],
+      "id": "9562efff-ce25-4a6f-8705-dc22101a8a7d",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cc28b73d-c132-4eba-a33d-f8dfe8fe47e7",
+              "name": "worker_id",
+              "value": "={{ 'p5-handoff-' + $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "c7a5d6a0-c7d8-47c9-b347-f74e5ce11f7d",
+              "name": "event_type",
+              "value": "HUMAN_HANDOFF_REQUESTED",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        192,
+        80
+      ],
+      "id": "33aa3f14-420a-4819-bdc1-48625d63ae65",
+      "name": "Worker Context"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select *\nfrom public.claim_outbox_events_v1(\n    $1::text,\n    array['HUMAN_HANDOFF_REQUESTED']::text[],\n    1,\n    30\n);",
+        "options": {
+          "queryReplacement": "={{ [$json.worker_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        416,
+        80
+      ],
+      "id": "d070a95c-6faa-42e2-a8f3-3d2291c4027e",
+      "name": "Claim Handoff Event PG",
+      "credentials": {
+        "postgres": {
+          "id": "7USUIiXw7zZtcDkC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n    h.handoff_id,\n    h.call_id,\n    c.provider_call_id,\n\n    h.prospect_id,\n    h.opportunity_id,\n    h.conversation_id,\n\n    h.source_channel,\n    h.reason_code,\n    h.priority,\n    h.requested_by,\n\n    h.conversation_summary,\n    h.sensitive_topic_detected,\n    h.caller_explicitly_requested_human,\n\n    h.recommended_next_action,\n\n    h.transfer_mode,\n    h.transfer_destination_alias,\n    h.transfer_result,\n\n    h.handoff_status,\n    h.requested_at\n\nfrom public.human_handoffs as h\n\nleft join public.calls as c\n    on c.call_id = h.call_id\n\nwhere h.handoff_id = $1::uuid;",
+        "options": {
+          "queryReplacement": "={{ [ $('Claim Handoff Event PG').first().json.aggregate_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        640,
+        80
+      ],
+      "id": "38d3433c-fa48-4c4b-84c7-e31e9f957ed8",
+      "name": "Load Handoff Details PG",
+      "credentials": {
+        "postgres": {
+          "id": "7USUIiXw7zZtcDkC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const h = $json;\n\nconst reasonLabels = {\n  EXPLICIT_HUMAN_REQUEST: 'Caller requested a human',\n  SENSITIVE_OR_CLINICAL: 'Sensitive or clinical issue',\n  LOW_CONFIDENCE: 'Low-confidence case',\n  UNSUPPORTED_KNOWLEDGE: 'Unsupported knowledge request',\n  HIGH_VALUE_OPPORTUNITY: 'High-value opportunity',\n  CALLER_FRUSTRATION: 'Caller frustration',\n  BOOKING_FAILURE: 'Booking failure',\n  TOOL_FAILURE: 'Tool failure',\n  CONFLICTING_INTENT: 'Conflicting intent',\n  OUT_OF_SCOPE: 'Out-of-scope request',\n};\n\nconst reasonLabel =\n  reasonLabels[h.reason_code] ?? h.reason_code ?? 'Human review required';\n\nconst priority =\n  h.priority ?? 'NORMAL';\n\nconst subject =\n  `[${priority}] Human handoff requested — ${reasonLabel}`;\n\nconst body = [\n  'A caller requires human follow-up.',\n  '',\n  `Priority: ${priority}`,\n  `Reason: ${reasonLabel}`,\n  `Requested by: ${h.requested_by ?? 'UNKNOWN'}`,\n  `Caller explicitly requested human: ${\n    h.caller_explicitly_requested_human === true ? 'Yes' : 'No'\n  }`,\n  `Channel: ${h.source_channel ?? 'UNKNOWN'}`,\n  '',\n  `Recommended action: ${\n    h.recommended_next_action ?? 'Human review and follow-up.'\n  }`,\n  '',\n  `Handoff ID: ${h.handoff_id}`,\n  `Call ID: ${h.call_id ?? 'N/A'}`,\n  `Provider Call ID: ${h.provider_call_id ?? 'N/A'}`,\n  `Requested at: ${h.requested_at ?? 'N/A'}`,\n].join('\\n');\n\nreturn [\n  {\n    json: {\n      ...h,\n\n      notification: {\n        subject,\n        body,\n        priority,\n        reason_code: h.reason_code,\n        reason_label: reasonLabel,\n      },\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        80
+      ],
+      "id": "285f3d50-e9e3-40cd-a121-3bffc2b4ffea",
+      "name": "Build Handoff Notification"
+    },
+    {
+      "parameters": {
+        "fromEmail": "johncarlbacunawa94@gmail.com",
+        "toEmail": "johncarlbacunawa94@gmail.com",
+        "subject": "={{ $json.notification.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $json.notification.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1088,
+        80
+      ],
+      "id": "835f28db-0f3c-404f-a736-41cbe9cfcb78",
+      "name": "Send Operator Notification",
+      "webhookId": "61062ad4-15a1-4cbb-bc8c-25c0972785d4",
+      "credentials": {
+        "smtp": {
+          "id": "WwNIWI4qvA6AkZEC",
+          "name": "SMTP account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select *\nfrom public.complete_outbox_event_v1(\n    $1::uuid,\n    $2::text\n);",
+        "options": {
+          "queryReplacement": "={{ [   $('Claim Handoff Event PG').first().json.outbox_event_id,   $('Worker Context').first().json.worker_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1312,
+        -16
+      ],
+      "id": "4a26875d-5f44-4e83-a040-b3b6a98e8c6e",
+      "name": "Complete Handoff Outbox PG",
+      "credentials": {
+        "postgres": {
+          "id": "7USUIiXw7zZtcDkC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select *\nfrom public.fail_outbox_event_v1(\n    $1::uuid,\n    $2::text,\n    $3::text,\n    60\n);",
+        "options": {
+          "queryReplacement": "={{ [   $('Claim Handoff Event PG').first().json.outbox_event_id,   $('Worker Context').first().json.worker_id,   (     'Operator notification failed: ' +     (       $json.error?.message ??       $json.message ??       JSON.stringify($json)     )   ).slice(0, 1000) ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1312,
+        176
+      ],
+      "id": "50b9f440-7552-4a14-8bd1-020d22ff90e5",
+      "name": "Fail Handoff Outbox PG",
+      "credentials": {
+        "postgres": {
+          "id": "7USUIiXw7zZtcDkC",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Worker Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Worker Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worker Context": {
+      "main": [
+        [
+          {
+            "node": "Claim Handoff Event PG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Handoff Event PG": {
+      "main": [
+        [
+          {
+            "node": "Load Handoff Details PG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Handoff Details PG": {
+      "main": [
+        [
+          {
+            "node": "Build Handoff Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Handoff Notification": {
+      "main": [
+        [
+          {
+            "node": "Send Operator Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Operator Notification": {
+      "main": [
+        [
+          {
+            "node": "Complete Handoff Outbox PG",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fail Handoff Outbox PG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "5fa679ca-9672-4230-9ad1-0bb7f8d94269",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "47273c19a086199622c4cf130521012ff16a6e4747acd60f3b15fdeacbcdcc20"
+  },
+  "nodeGroups": [],
+  "id": "DU0n7bjWFQwKLeC3",
+  "tags": []
+}

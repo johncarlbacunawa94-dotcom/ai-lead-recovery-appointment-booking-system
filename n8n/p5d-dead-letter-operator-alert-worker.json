@@ -1,0 +1,262 @@
+{
+  "name": "P5D — Dead-Letter Operator Alert Worker",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "846fc49b-216e-4c96-abb6-dce13c3bfd4d",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        192
+      ],
+      "id": "ecf3c315-4f7d-4db7-ade5-f0a9dced3939",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d1cf6d4b-1ffe-45b6-ac01-b849dc17f842",
+              "name": "worker_id",
+              "value": "={{ 'p5d-deadletter-' + $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "1b9999be-05e6-4f80-a85b-e3ef93ae687c",
+              "name": "event_type",
+              "value": "OUTBOX_DEAD_LETTER_ALERT",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        192,
+        80
+      ],
+      "id": "656817a2-12cf-42a1-bdbb-9c158c86aa5b",
+      "name": "Worker Context"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select *\nfrom public.claim_outbox_events_v1(\n    $1::text,\n    array['OUTBOX_DEAD_LETTER_ALERT']::text[],\n    1,\n    30\n);",
+        "options": {
+          "queryReplacement": "={{ [$json.worker_id] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        368,
+        80
+      ],
+      "id": "625208e6-03e3-430c-8eef-262c4c85662c",
+      "name": "Claim Dead-Letter Alert PG",
+      "credentials": {
+        "postgres": {
+          "id": "7USUIiXw7zZtcDkC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $json;\nconst p = e.payload ?? {};\n\nconst originalEventType =\n  p.original_event_type ?? 'UNKNOWN';\n\nconst attempts =\n  p.attempts ?? 'UNKNOWN';\n\nconst maxAttempts =\n  p.max_attempts ?? 'UNKNOWN';\n\nconst lastError =\n  String(p.last_error ?? 'No error detail recorded').slice(0, 1000);\n\nconst subject =\n  `[CRITICAL] Dead-letter event — ${originalEventType}`;\n\nconst body = [\n  'An asynchronous operation exhausted all processing attempts and requires operator review.',\n  '',\n  `Original event type: ${originalEventType}`,\n  `Original event key: ${p.original_event_key ?? 'N/A'}`,\n  `Original outbox event ID: ${p.original_outbox_event_id ?? 'N/A'}`,\n  '',\n  `Aggregate type: ${p.original_aggregate_type ?? 'N/A'}`,\n  `Aggregate ID: ${p.original_aggregate_id ?? 'N/A'}`,\n  '',\n  `Attempts: ${attempts}/${maxAttempts}`,\n  `Last error: ${lastError}`,\n  `Dead-lettered at: ${p.dead_lettered_at ?? 'N/A'}`,\n  '',\n  `Alert outbox event ID: ${e.outbox_event_id}`,\n  `Correlation ID: ${e.correlation_id ?? 'N/A'}`,\n  '',\n  'Review the failed operation before manually retrying or resolving it.',\n].join('\\n');\n\nreturn [\n  {\n    json: {\n      ...e,\n      notification: {\n        subject,\n        body,\n      },\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        80
+      ],
+      "id": "366ad696-3d78-474d-ad65-b7be7864de98",
+      "name": "Build Dead-Letter Alert"
+    },
+    {
+      "parameters": {
+        "fromEmail": "johncarlbacunawa94@gmail.com",
+        "toEmail": "johncarlbacunawa94@gmail.com",
+        "subject": "={{ $json.notification.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $json.notification.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        816,
+        80
+      ],
+      "id": "f51b53aa-2166-4c06-bfc3-807b7f900f81",
+      "name": "Send an Email",
+      "webhookId": "740a3bc7-2866-4299-9323-6392249cd118",
+      "credentials": {
+        "smtp": {
+          "id": "WwNIWI4qvA6AkZEC",
+          "name": "SMTP account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select *\nfrom public.complete_outbox_event_v1(\n    $1::uuid,\n    $2::text\n);",
+        "options": {
+          "queryReplacement": "={{ [   $('Claim Dead-Letter Alert PG').first().json.outbox_event_id,   $('Worker Context').first().json.worker_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1040,
+        -16
+      ],
+      "id": "38e64d85-b934-4211-9090-e88ee39e4718",
+      "name": "Complete Alert Outbox PG",
+      "credentials": {
+        "postgres": {
+          "id": "7USUIiXw7zZtcDkC",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select *\nfrom public.fail_outbox_event_v1(\n    $1::uuid,\n    $2::text,\n    $3::text,\n    60\n);",
+        "options": {
+          "queryReplacement": "={{ [   $('Claim Dead-Letter Alert PG').first().json.outbox_event_id,   $('Worker Context').first().json.worker_id,   (     'Dead-letter operator notification failed: ' +     (       $json.error?.message ??       $json.message ??       JSON.stringify($json)     )   ).slice(0, 1000) ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1040,
+        176
+      ],
+      "id": "a0513c6f-05ed-4e5e-b3f3-f509843154d7",
+      "name": "Fail Alert Outbox PG",
+      "credentials": {
+        "postgres": {
+          "id": "7USUIiXw7zZtcDkC",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Worker Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Worker Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worker Context": {
+      "main": [
+        [
+          {
+            "node": "Claim Dead-Letter Alert PG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Dead-Letter Alert PG": {
+      "main": [
+        [
+          {
+            "node": "Build Dead-Letter Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Dead-Letter Alert": {
+      "main": [
+        [
+          {
+            "node": "Send an Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send an Email": {
+      "main": [
+        [
+          {
+            "node": "Complete Alert Outbox PG",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fail Alert Outbox PG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c0af4651-495a-4d14-956c-0eccd9fb5431",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "47273c19a086199622c4cf130521012ff16a6e4747acd60f3b15fdeacbcdcc20"
+  },
+  "nodeGroups": [],
+  "id": "sJIVxMRq70H33Hct",
+  "tags": []
+}
