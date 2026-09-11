@@ -419,6 +419,7 @@ export default {
             await handleHumanHandoff(
               runtimeContext,
               envelope.args,
+              ctx.supabaseAdmin,
             );
 
           break;
