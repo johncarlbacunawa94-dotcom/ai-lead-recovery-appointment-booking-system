@@ -1,0 +1,224 @@
+{
+  "name": "P4 — Retell Lifecycle Outbox Worker",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "45c049ad-1200-4937-8fdf-4be44498ca00",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0b45ebfc-abd7-49a7-8b6f-0a7d8091bf19",
+              "name": "worker_id",
+              "value": "={{ 'p4-retell-lifecycle-' + $execution.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "df7d6cbd-0ddd-4c56-8706-48e5edfee8d5",
+      "name": "Worker Context"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lirmmoebcvmoixxfbmlu.supabase.co/rest/v1/rpc/claim_outbox_events_v1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ p_worker_id: $('Worker Context').first().json.worker_id, p_event_types: ['RETELL_CALL_STARTED', 'RETELL_CALL_ENDED', 'RETELL_CALL_ANALYZED'], p_limit: 1, p_lock_timeout_seconds: 30 }) }}",
+        "options": {
+          "timeout": 15000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": false,
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "4fcb228a-0799-437a-ab43-8cae40988376",
+      "name": "Claim Lifecycle Event",
+      "credentials": {
+        "supabaseApi": {
+          "id": "I3iwciCSUMhOFcg6",
+          "name": "Supabase account"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow",
+      "alwaysOutputData": false
+    },
+    {
+      "id": "d14e45f4-99bb-4ad2-866b-06dc186bcc59",
+      "name": "Reconcile Call Lifecycle",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        624,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://lirmmoebcvmoixxfbmlu.supabase.co/rest/v1/rpc/reconcile_retell_call_lifecycle_v1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const event = $('Claim Lifecycle Event').first().json; const age = Date.now() - Date.parse(event.claimed_at); if (!Number.isFinite(age) || age < -2000 || age > 3000) throw new Error('Outbox lease has insufficient time remaining; stop and allow stale-lease recovery'); return ({ p_raw_provider_event_id: event.source_raw_provider_event_id }); })() }}",
+        "options": {
+          "timeout": 15000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": false,
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "I3iwciCSUMhOFcg6",
+          "name": "Supabase account"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow",
+      "alwaysOutputData": false
+    },
+    {
+      "id": "c646fc92-aa28-4163-a83d-0b86bd07c384",
+      "name": "Complete Outbox Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        832,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://lirmmoebcvmoixxfbmlu.supabase.co/rest/v1/rpc/complete_outbox_event_v1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const event = $('Claim Lifecycle Event').first().json; const age = Date.now() - Date.parse(event.claimed_at); if (!Number.isFinite(age) || age < -2000 || age > 18000) throw new Error('Outbox lease has insufficient time remaining; stop and allow stale-lease recovery'); return ({ p_outbox_event_id: event.outbox_event_id, p_worker_id: $('Worker Context').first().json.worker_id }); })() }}",
+        "options": {
+          "timeout": 10000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "neverError": false,
+              "fullResponse": false
+            }
+          }
+        }
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "I3iwciCSUMhOFcg6",
+          "name": "Supabase account"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow",
+      "alwaysOutputData": false
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Worker Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worker Context": {
+      "main": [
+        [
+          {
+            "node": "Claim Lifecycle Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Lifecycle Event": {
+      "main": [
+        [
+          {
+            "node": "Reconcile Call Lifecycle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reconcile Call Lifecycle": {
+      "main": [
+        [
+          {
+            "node": "Complete Outbox Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 45,
+    "saveManualExecutions": false,
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveExecutionProgress": false
+  },
+  "pinData": {}
+}

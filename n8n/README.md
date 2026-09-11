@@ -1,8 +1,9 @@
 ﻿# n8n Workflows
 
-No n8n workflows have been created yet.
+Phase 4 workflow: `p4-retell-lifecycle-outbox-worker.json`.
+See [P4 setup and validation](P4-RETELL-LIFECYCLE.md) for import instructions and failure behavior.
 
-n8n will be introduced only for asynchronous orchestration,
+n8n is used only for asynchronous orchestration,
 scheduled work, retries, notifications, reporting, event handling,
 missed-call recovery, and dormant-reactivation workflows.
 
