@@ -1,0 +1,143 @@
+PHASE 6 TEST-MODE ADDENDUM v1.4
+AI Lead Recovery & Appointment Booking System
+
+Status: ACTIVE
+Scope: Phase 6 only
+Baseline preserved:
+- PHASE1_ARCHITECTURE_LOCK_v1.0.txt
+- PROJECT_ARCHITECTURE_CURRENT_v1.3.txt
+
+===============================================================================
+1. PURPOSE
+===============================================================================
+
+The existing architecture defines Twilio as the future Australian PSTN and SMS
+transport provider.
+
+Live Twilio provisioning currently requires a paid account for the available
+account/region. Because this project is being completed as a portfolio build,
+paid carrier provisioning is deferred.
+
+This addendum changes only the Phase 6 implementation starting gate.
+
+It does not alter the authoritative responsibilities established in the
+existing architecture.
+
+===============================================================================
+2. AUTHORIZED PHASE 6 TEST MODE
+===============================================================================
+
+Phase 6 development may proceed using:
+
+- the real Twilio SDK and REST/webhook contracts;
+- Twilio-compatible webhook request formats;
+- Twilio X-Twilio-Signature verification;
+- controlled local authentication credentials;
+- controlled Twilio-shaped provider events;
+- provider-independent authoritative PostgreSQL state;
+- existing outbox-based asynchronous orchestration.
+
+No real Twilio carrier activity is required for these test-mode milestones.
+
+===============================================================================
+3. ARCHITECTURAL BOUNDARY
+===============================================================================
+
+The Phase 6 boundary remains:
+
+Twilio transport
+    ->
+verified provider ingress
+    ->
+PostgreSQL authoritative state
+    ->
+transactional outbox
+    ->
+n8n asynchronous orchestration
+
+Supabase PostgreSQL remains authoritative business state.
+
+Supabase Edge Functions remain the synchronous provider boundary.
+
+n8n remains asynchronous orchestration only and does not own authoritative
+business-state transitions.
+
+Retell remains responsible for AI voice conversation behavior.
+
+===============================================================================
+4. PHASE 6A PROVEN TEST-MODE BOUNDARY
+===============================================================================
+
+Phase 6A introduces a dedicated Twilio webhook boundary.
+
+Implemented provider event families:
+
+- voice_status
+- incoming_message
+- message_status
+
+Authenticated events are persisted atomically as:
+
+raw_provider_events
+    +
+outbox_events
+
+The Twilio provider boundary does not create a second domain model.
+
+Existing canonical tables remain authoritative for calls, conversations,
+messages, contact eligibility, consent, opportunities, and related state.
+
+===============================================================================
+5. TEST-MODE CLAIM LIMITS
+===============================================================================
+
+The following may be claimed only after successful controlled testing:
+
+- Twilio SDK integration implemented;
+- Twilio webhook signature verification implemented;
+- Twilio Voice StatusCallback contract exercised;
+- Twilio inbound messaging contract exercised;
+- Twilio message-status callback contract exercised;
+- authenticated provider ingress tested with controlled credentials;
+- provider-event replay/idempotency behavior tested;
+- atomic provider evidence and outbox persistence tested.
+
+The following must NOT be claimed until separately verified against live
+Twilio carrier infrastructure:
+
+- real SMS carrier delivery;
+- Australian Twilio number provisioning;
+- real PSTN calling;
+- real inbound carrier webhook delivery;
+- live telephone transfer;
+- production Twilio account authentication.
+
+===============================================================================
+6. FUTURE LIVE ACTIVATION
+===============================================================================
+
+Live Twilio activation must plug into the same provider boundary.
+
+Moving from controlled test mode to live Twilio credentials must not require
+redesigning authoritative PostgreSQL business logic.
+
+Production credentials must never be committed to source control.
+
+Live provisioning and carrier verification remain a future Phase 6 activation
+gate.
+
+===============================================================================
+7. PHASE SEQUENCE
+===============================================================================
+
+Phase 6A - Twilio provider transport/ingress foundation
+Phase 6B - deterministic missed-call recovery core
+Phase 6C - outbound recovery SMS transport
+Phase 6D - inbound reply and opt-out handling
+Phase 6E - live Australian PSTN/SMS verification (DEFERRED)
+
+Phase 7 dormant-lead reactivation remains deferred.
+
+===============================================================================
+END
+===============================================================================
