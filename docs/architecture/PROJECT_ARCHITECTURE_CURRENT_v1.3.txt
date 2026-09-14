@@ -1,0 +1,516 @@
+AI LEAD RECOVERY & APPOINTMENT BOOKING SYSTEM
+PROJECT ARCHITECTURE — CURRENT IMPLEMENTED STATE
+Version: 1.3
+Date: 2026-09-15
+
+PURPOSE
+
+This file records the current implemented and verified state of the
+AI Lead Recovery & Appointment Booking System after completion of Phase 5.
+
+It does NOT replace:
+
+- PHASE1_ARCHITECTURE_LOCK_v1.0.txt
+- PHASE1_ARCHITECTURE_ADDENDUM_v1.1.txt
+
+Those files remain the authoritative architecture baseline.
+
+No PROJECT_ARCHITECTURE_CURRENT_v1.2.txt is currently present in the
+repository. Version 1.3 is the current implementation snapshot following
+the completed Phase 4 and Phase 5 work.
+
+======================================================================
+1. CURRENT PLATFORM RESPONSIBILITIES
+======================================================================
+
+RETELL AI
+
+Owns:
+
+- speech recognition;
+- synthesized speech;
+- interruption handling;
+- turn-taking;
+- Conversation Flow;
+- approved conversational knowledge;
+- conversational intent interpretation;
+- approved synchronous tool invocation.
+
+Retell does NOT own authoritative database state.
+
+Real PSTN transfer is not yet claimed as proven.
+
+SUPABASE / POSTGRESQL
+
+PostgreSQL is the authoritative system of record.
+
+It owns:
+
+- canonical calls;
+- prospects;
+- opportunities;
+- appointments;
+- human handoffs;
+- tool execution audit;
+- AI decisions;
+- raw provider events;
+- outbox events;
+- audit/failure state;
+- lifecycle truth.
+
+SUPABASE EDGE FUNCTIONS
+
+Own synchronous Retell application-service behavior including:
+
+- signature verification;
+- provider transport-context validation;
+- canonical call/context resolution;
+- deterministic validation;
+- idempotency;
+- appointment adapters;
+- handoff creation;
+- safe tool responses.
+
+N8N
+
+n8n remains asynchronous orchestration only.
+
+It owns:
+
+- provider-event workers;
+- post-call orchestration;
+- retries;
+- notifications;
+- operational alerts;
+- scheduled polling.
+
+It does not authoritatively mutate business state outside the database
+contracts/RPCs designed for that purpose.
+
+CAL.COM
+
+Owns booking-provider availability and booking truth.
+
+======================================================================
+2. PROVIDER CONTEXT AND INTERNAL ID RULE
+======================================================================
+
+Retell provider call ID is trusted transport context only after verified
+Retell request handling.
+
+The model does not supply:
+
+- canonical call_id;
+- prospect_id;
+- opportunity_id;
+- correlation_id;
+- internal database identifiers.
+
+The backend resolves those identifiers.
+
+Call-first human handoff remains supported.
+
+A human_handoff may exist against a canonical call before prospect or
+opportunity identity has been resolved.
+
+======================================================================
+3. CURRENT CALL LIFECYCLE
+======================================================================
+
+Canonical implemented lifecycle:
+
+REGISTERED
+→ ACTIVE
+→ ENDED
+→ ANALYSIS_PENDING
+→ ANALYZED
+→ POST_PROCESSED
+
+Important current ownership correction:
+
+reconcile_retell_call_lifecycle_v1
+
+owns the transition into ANALYSIS_PENDING.
+
+prepare_retell_post_call_analysis_v1
+
+does NOT perform that lifecycle transition.
+
+It verifies the call state and exposes the authoritative evidence required
+for analysis/resume processing.
+
+This distinction is part of the current implementation and must not be
+reversed without a verified defect.
+
+======================================================================
+4. PHASE 2 / PHASE 3 CURRENT STATE
+======================================================================
+
+Infrastructure foundation is proven.
+
+Current implemented foundation includes:
+
+- Supabase PostgreSQL schema and migrations;
+- RLS and privilege boundaries;
+- Retell signed ingress;
+- canonical call resolution;
+- tool argument validation;
+- tool idempotency;
+- prospect context capture.
+
+Inbound Retell web voice is proven.
+
+Voice appointment booking is proven using Cal.com.
+
+Booking safety includes:
+
+- availability checking;
+- controlled slot token use;
+- confirmation before creation;
+- provider truth;
+- duplicate protection;
+- safe unavailable-slot handling;
+- idempotent booking behavior.
+
+Booking architecture is frozen unless an actual defect appears.
+
+======================================================================
+5. PHASE 4 — POST-CALL INTELLIGENCE
+======================================================================
+
+Phase 4 is complete and frozen.
+
+Current worker:
+
+P4 — Retell Post-Call Analysis Worker
+
+Current asynchronous flow:
+
+RETELL_CALL_ANALYZED
+→ claim outbox event
+→ reconcile call lifecycle
+→ prepare authoritative call evidence
+→ route resume action
+→ structured post-call AI analysis where required
+→ normalize and validate
+→ persist PostCallAnalysisV1
+→ apply deterministic business state
+→ complete outbox event
+
+Post-call AI output is analytical input only.
+
+AI does not authoritatively control:
+
+- booking truth;
+- DND;
+- contact eligibility;
+- canonical IDs;
+- lifecycle mutation;
+- duplicate status.
+
+Database contracts validate and apply allowable state changes.
+
+======================================================================
+6. PHASE 5 — HUMAN HANDOFF
+======================================================================
+
+Phase 5 human-handoff behavior is complete and frozen.
+
+Current Retell tool:
+
+request_human_handoff_v1
+
+Canonical reasons include:
+
+EXPLICIT_HUMAN_REQUEST
+SENSITIVE_OR_CLINICAL
+LOW_CONFIDENCE
+UNSUPPORTED_KNOWLEDGE
+HIGH_VALUE_OPPORTUNITY
+CALLER_FRUSTRATION
+BOOKING_FAILURE
+TOOL_FAILURE
+CONFLICTING_INTENT
+OUT_OF_SCOPE
+
+Web-call behavior currently proves:
+
+- handoff detection;
+- call-first handoff creation;
+- idempotency;
+- explicit caller human request;
+- AI-triggered sensitive/clinical escalation;
+- queue creation.
+
+Until Phase 6 telephony is proven:
+
+transfer_mode = QUEUE_ONLY
+
+No real PSTN transfer capability is claimed yet.
+
+======================================================================
+7. PHASE 5C — HUMAN HANDOFF NOTIFICATION
+======================================================================
+
+New human_handoffs transactionally create:
+
+event_type:
+HUMAN_HANDOFF_REQUESTED
+
+The handoff row and outbox event are created in the same PostgreSQL
+transaction.
+
+Current worker:
+
+P5 — Human Handoff Notification Worker
+
+Flow:
+
+Schedule / Manual Trigger
+→ Worker Context
+→ claim HUMAN_HANDOFF_REQUESTED
+→ load authoritative handoff details
+→ build operator notification
+→ SMTP operator email
+→ complete outbox event
+
+Failure path:
+
+SMTP/error
+→ fail_outbox_event_v1
+→ FAILED
+→ delayed retry
+→ eventual retry or DEAD_LETTER
+
+Verified behavior:
+
+- successful email delivery;
+- FAILED after controlled notification failure;
+- delayed retry;
+- later successful delivery;
+- final PROCESSED state;
+- cleared worker lock;
+- cleared last_error after success.
+
+Notification delivery is at-least-once.
+
+A crash after SMTP acceptance but before outbox completion may result in a
+duplicate operator email after lease recovery.
+
+This is accepted current behavior.
+
+======================================================================
+8. PHASE 5D — DEAD-LETTER ALERTING
+======================================================================
+
+Migration:
+
+20260911202903_outbox_dead_letter_alert.sql
+
+When a non-alert outbox event transitions to:
+
+DEAD_LETTER
+
+PostgreSQL transactionally creates exactly one:
+
+OUTBOX_DEAD_LETTER_ALERT
+
+The generated alert preserves:
+
+- original outbox event ID;
+- original event key;
+- original event type;
+- original aggregate;
+- attempts;
+- maximum attempts;
+- last error;
+- dead-letter timestamp;
+- correlation ID.
+
+Current worker:
+
+P5D — Dead-Letter Operator Alert Worker
+
+Flow:
+
+Schedule / Manual Trigger
+→ claim OUTBOX_DEAD_LETTER_ALERT
+→ build operator alert
+→ SMTP operator email
+→ complete alert outbox event
+
+A dead-letter alert that itself reaches DEAD_LETTER does NOT generate another
+dead-letter alert.
+
+The recursion guard has been explicitly tested.
+
+Verified:
+
+recursive_alert_count = 0
+
+======================================================================
+9. CURRENT OPERATIONAL STATE
+======================================================================
+
+P5 — Human Handoff Notification Worker
+
+Published in n8n.
+
+Schedule:
+
+every 1 minute
+
+Automatic empty-queue polling has been verified.
+
+P5D — Dead-Letter Operator Alert Worker
+
+Published in n8n.
+
+Schedule:
+
+every 1 minute
+
+Automatic empty-queue polling has been verified.
+
+When no eligible event exists:
+
+Schedule Trigger
+→ Worker Context
+→ Claim RPC
+→ zero rows
+→ workflow terminates successfully
+
+No unnecessary email is sent.
+
+Repository checkpoint:
+
+4db1c79
+feat: add handoff notifications and dead-letter alerting
+
+Repository was clean after the checkpoint.
+
+======================================================================
+10. FROZEN COMPONENTS
+======================================================================
+
+Do not modify without a concrete verified defect:
+
+- Phase 1 architecture lock;
+- Phase 1 addendum;
+- Retell Phase 5 handoff routing;
+- request_human_handoff_v1 Phase 5 behavior;
+- booking / availability behavior;
+- Phase 4 post-call worker;
+- Phase 5 notification worker;
+- Phase 5D dead-letter alert worker;
+- human-handoff transactional outbox bridge;
+- dead-letter recursion guard.
+
+Do not reopen these components merely to simplify or redesign them.
+
+======================================================================
+11. NEXT CONTROLLED PHASE
+======================================================================
+
+PHASE 6 — TWILIO MISSED-CALL RECOVERY
+
+Locked Phase 6 scope:
+
+- introduce an Australian Twilio number;
+- connect Twilio voice transport to Retell;
+- verify real PSTN call behavior;
+- verify real phone transfer;
+- implement missed-call event handling;
+- send recovery SMS directly through Twilio;
+- implement controlled inbound SMS reply handling.
+
+Australian SMS remains direct Twilio SMS.
+
+Do not route Australian SMS through Retell.
+
+======================================================================
+12. PHASE 6 TELEPHONY DIRECTION
+======================================================================
+
+Preferred integration:
+
+AUSTRALIAN PSTN
+→ TWILIO NUMBER
+→ TWILIO ELASTIC SIP TRUNK
+→ RETELL
+
+Use Retell custom telephony through Elastic SIP Trunking.
+
+Do not use the Dial-to-SIP integration unless a verified requirement makes
+Elastic SIP Trunking unsuitable.
+
+Reason:
+
+Elastic SIP Trunking preserves Retell telephony capabilities including native
+call-transfer support.
+
+Dial-to-SIP would require custom transfer implementation and would unnecessarily
+expand the backend.
+
+Current Phase 6 architecture must remain:
+
+Twilio = PSTN / SMS transport
+Retell = voice agent and transfer execution
+PostgreSQL = authoritative state
+Edge Functions = verified provider ingress / synchronous controls
+n8n = asynchronous missed-call recovery and notification orchestration
+
+======================================================================
+13. PHASE 6 SAFETY RULES
+======================================================================
+
+Do not claim real PSTN behavior until a real phone call is verified.
+
+Do not change queue-only Phase 5 handoff behavior until transfer behavior has
+been proven using the real Twilio/Retell telephony path.
+
+Do not send recovery SMS until:
+
+- the missed-call event is authoritatively identified;
+- phone/contact context is resolved;
+- channel eligibility is checked;
+- deterministic DND/opt-out controls are applied.
+
+SMS replies must be persisted and processed through controlled provider-event
+handling.
+
+Do not allow AI to reverse deterministic opt-out/DND state.
+
+Never commit:
+
+- TWILIO_ACCOUNT_SID;
+- TWILIO_AUTH_TOKEN;
+- Retell secrets;
+- provider credential material.
+
+Use fictional/demo identities and controlled test calls.
+
+======================================================================
+14. PHASE 6 STARTING GATE
+======================================================================
+
+Phase 6 begins with telephony provisioning and compliance preflight.
+
+Before application code or new migrations:
+
+1. establish Twilio account availability;
+2. determine which Australian number type can actually be provisioned;
+3. satisfy required Twilio regulatory identity/address requirements;
+4. confirm Voice capability;
+5. confirm SMS capability required for recovery;
+6. purchase only the minimum development number needed;
+7. configure Twilio Elastic SIP Trunking;
+8. import/bind the number to Retell;
+9. verify one real inbound PSTN call;
+10. only then proceed to transfer and missed-call recovery behavior.
+
+Do not build speculative telephony code before this gate is satisfied.
+
+======================================================================
+END CURRENT STATE v1.3
+======================================================================
