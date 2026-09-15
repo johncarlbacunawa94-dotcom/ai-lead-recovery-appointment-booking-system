@@ -1,0 +1,591 @@
+AI LEAD RECOVERY & APPOINTMENT BOOKING SYSTEM
+PROJECT ARCHITECTURE - CURRENT IMPLEMENTED STATE
+Version: 1.4
+Date: 2026-09-16
+
+PURPOSE
+
+This file records the current implemented and verified state of the
+AI Lead Recovery & Appointment Booking System following completion of
+Phase 6D.
+
+It does NOT replace:
+
+- PHASE1_ARCHITECTURE_LOCK_v1.0.txt
+- PHASE1_ARCHITECTURE_ADDENDUM_v1.1.txt
+
+Those files remain the authoritative architecture baseline.
+
+Phase 6 test-mode authorization is recorded separately in:
+
+- PHASE6_TEST_MODE_ADDENDUM_v1.5.txt
+
+Historical implementation snapshots are retained for traceability.
+
+===============================================================================
+1. PLATFORM RESPONSIBILITIES
+===============================================================================
+
+RETELL AI
+
+Owns:
+
+- speech recognition;
+- synthesized speech;
+- interruption handling;
+- turn-taking;
+- Conversation Flow;
+- approved conversational knowledge;
+- conversational intent interpretation;
+- approved synchronous tool invocation.
+
+Retell does NOT own authoritative database state.
+
+SUPABASE / POSTGRESQL
+
+PostgreSQL is the authoritative system of record.
+
+It owns:
+
+- canonical calls;
+- prospects;
+- opportunities;
+- appointments;
+- human handoffs;
+- contact points;
+- contact eligibility;
+- consent state;
+- conversations;
+- messages;
+- tool execution audit;
+- AI decisions;
+- raw provider events;
+- outbox events;
+- outbound SMS-attempt state;
+- lifecycle truth;
+- deterministic business-state transitions.
+
+SUPABASE EDGE FUNCTIONS
+
+Own synchronous provider/application boundaries including:
+
+- provider signature verification;
+- provider transport validation;
+- canonical context resolution;
+- deterministic argument validation;
+- idempotency;
+- appointment-provider adapters;
+- handoff creation;
+- Twilio ingress;
+- Twilio SMS transport adapter;
+- protected recovery-SMS orchestration.
+
+N8N
+
+n8n remains asynchronous orchestration only.
+
+It owns:
+
+- outbox-event polling;
+- asynchronous workers;
+- post-call orchestration;
+- retries;
+- notifications;
+- dead-letter alerts;
+- missed-call recovery orchestration;
+- inbound-SMS asynchronous reconciliation orchestration;
+- scheduled processing.
+
+n8n does not independently determine authoritative business state.
+
+CAL.COM
+
+Cal.com owns booking-provider availability and booking truth.
+
+TWILIO
+
+Twilio is the intended external SMS / PSTN transport.
+
+Current portfolio implementation proves provider-contract integration but
+does not claim live carrier/PSTN verification.
+
+===============================================================================
+2. INTERNAL ID AND TRUST BOUNDARY
+===============================================================================
+
+Provider identifiers are trusted only after verified provider-boundary
+handling.
+
+The AI model does not supply authoritative:
+
+- call_id;
+- prospect_id;
+- opportunity_id;
+- correlation_id;
+- message_id;
+- internal database identifiers.
+
+The backend resolves internal identity.
+
+Call-first human handoff remains supported.
+
+A human_handoff may exist against a canonical call before prospect or
+opportunity identity has been resolved.
+
+===============================================================================
+3. CANONICAL CALL LIFECYCLE
+===============================================================================
+
+Implemented lifecycle:
+
+REGISTERED
+-> ACTIVE
+-> ENDED
+-> ANALYSIS_PENDING
+-> ANALYZED
+-> POST_PROCESSED
+
+Authoritative ownership:
+
+reconcile_retell_call_lifecycle_v1
+
+owns transition into:
+
+ANALYSIS_PENDING
+
+prepare_retell_post_call_analysis_v1
+
+does not perform that transition.
+
+It verifies lifecycle state and resolves authoritative evidence required for
+post-call analysis.
+
+This ownership separation is frozen unless a verified defect appears.
+
+===============================================================================
+4. FOUNDATION AND SYNCHRONOUS TOOLING
+===============================================================================
+
+Implemented and verified foundation includes:
+
+- Supabase PostgreSQL schema and migrations;
+- row-level security and privilege boundaries;
+- signed Retell ingress;
+- canonical call resolution;
+- deterministic tool-argument validation;
+- tool idempotency;
+- idempotent prospect-context capture;
+- call-first handoff support.
+
+Inbound Retell voice behavior has been exercised.
+
+Appointment behavior has been exercised using Cal.com.
+
+Booking controls include:
+
+- availability checking;
+- controlled slot-token use;
+- caller confirmation;
+- provider booking truth;
+- duplicate protection;
+- unavailable-slot handling;
+- idempotent booking behavior.
+
+Booking architecture remains frozen unless an actual defect appears.
+
+===============================================================================
+5. PHASE 4 - POST-CALL INTELLIGENCE
+===============================================================================
+
+Status:
+
+COMPLETE / FROZEN
+
+Current asynchronous post-call flow:
+
+RETELL_CALL_ANALYZED
+-> claim outbox event
+-> reconcile call lifecycle
+-> prepare authoritative call evidence
+-> enrich transcript where required
+-> run structured AI analysis
+-> normalize and validate
+-> persist PostCallAnalysisV1
+-> apply deterministic business state
+-> complete outbox event
+
+Post-call AI output is analytical input only.
+
+AI does not authoritatively control:
+
+- booking truth;
+- DND;
+- consent;
+- contact eligibility;
+- canonical IDs;
+- call lifecycle;
+- duplicate status.
+
+===============================================================================
+6. PHASE 5 - HUMAN HANDOFF AND OPERATIONS
+===============================================================================
+
+Status:
+
+COMPLETE / FROZEN
+
+Retell handoff tool:
+
+request_human_handoff_v1
+
+Canonical handoff reasons include:
+
+- EXPLICIT_HUMAN_REQUEST
+- SENSITIVE_OR_CLINICAL
+- LOW_CONFIDENCE
+- UNSUPPORTED_KNOWLEDGE
+- HIGH_VALUE_OPPORTUNITY
+- CALLER_FRUSTRATION
+- BOOKING_FAILURE
+- TOOL_FAILURE
+- CONFLICTING_INTENT
+- OUT_OF_SCOPE
+
+Current transfer mode remains:
+
+QUEUE_ONLY
+
+No real PSTN transfer capability is claimed.
+
+Human handoff transactionally creates:
+
+HUMAN_HANDOFF_REQUESTED
+
+Current notification worker:
+
+P5 - Human Handoff Notification Worker
+
+Dead-letter handling transactionally creates:
+
+OUTBOX_DEAD_LETTER_ALERT
+
+Current alert worker:
+
+P5D - Dead-Letter Operator Alert Worker
+
+The dead-letter recursion guard prevents alert events from recursively
+generating additional dead-letter alerts.
+
+Notification delivery remains at-least-once.
+
+A crash after SMTP acceptance but before outbox completion may result in a
+duplicate operator email after lease recovery.
+
+That behavior is accepted.
+
+===============================================================================
+7. PHASE 6 - TWILIO RECOVERY SYSTEM
+===============================================================================
+
+Phase 6 uses the approved test-mode architecture defined in:
+
+PHASE6_TEST_MODE_ADDENDUM_v1.5.txt
+
+Current status:
+
+Phase 6A - COMPLETE
+Phase 6B - COMPLETE / FROZEN
+Phase 6C - COMPLETE / FROZEN
+Phase 6D - COMPLETE / FROZEN
+Phase 6E - DEFERRED
+
+===============================================================================
+8. PHASE 6A - TWILIO PROVIDER BOUNDARY
+===============================================================================
+
+Implemented Twilio event families:
+
+- voice_status;
+- incoming_message;
+- message_status.
+
+Twilio ingress:
+
+- validates HTTP method and content type;
+- verifies X-Twilio-Signature;
+- preserves provider evidence;
+- persists raw provider events;
+- transactionally creates outbox work;
+- uses deterministic provider event identity.
+
+Twilio provider events do not create a competing domain model.
+
+PostgreSQL remains authoritative.
+
+===============================================================================
+9. PHASE 6B - DETERMINISTIC MISSED-CALL RECOVERY
+===============================================================================
+
+Implemented behavior includes:
+
+- authoritative missed-call identification;
+- deterministic provider-call reconciliation;
+- exact phone/contact matching;
+- preservation of ambiguous identity;
+- recovery-resolution logic;
+- duplicate protection;
+- controlled recovery outbox creation.
+
+AI does not decide whether a missed call is recoverable.
+
+===============================================================================
+10. PHASE 6C - SAFE OUTBOUND RECOVERY SMS
+===============================================================================
+
+Implemented components include:
+
+- prepare_twilio_missed_call_recovery_sms_v1;
+- Twilio SMS transport adapter;
+- durable outbound_message_attempts state;
+- protected twilio-recovery-sms Edge Function;
+- P6C - Missed-Call Recovery SMS Worker.
+
+The safety gate re-checks authoritative state immediately before a send attempt.
+
+Relevant controls include:
+
+- exact contact resolution;
+- SMS eligibility;
+- DND;
+- revoked consent;
+- duplicate protection;
+- durable attempt state.
+
+Transport modes include:
+
+- MOCK;
+- LIVE.
+
+The current verified portfolio environment uses MOCK.
+
+Controlled transport outcomes include:
+
+- success;
+- provider rejection;
+- retryable rejection;
+- unknown network outcome.
+
+UNKNOWN provider outcomes are preserved rather than blindly retried.
+
+The published P6C n8n worker performs asynchronous orchestration only.
+
+===============================================================================
+11. PHASE 6D - INBOUND SMS AND OPT-OUT
+===============================================================================
+
+Implemented components include:
+
+- TWILIO_INCOMING_MESSAGE ingestion;
+- reconcile_twilio_incoming_message_v1;
+- authoritative message / conversation persistence;
+- exact phone identity resolution;
+- ambiguous identity preservation;
+- provider MessageSid idempotency;
+- deterministic STOP classification;
+- deterministic consent revocation;
+- deterministic DND enforcement;
+- review outbox creation for unresolved / ambiguous identity;
+- P6D - Twilio Inbound SMS Worker.
+
+Recognized opt-out tokens include:
+
+STOP
+STOPALL
+UNSUBSCRIBE
+CANCEL
+END
+QUIT
+
+OPT_OUT takes precedence over ordinary reply handling.
+
+For resolved exact identities, SMS opt-out makes every supported SMS purpose:
+
+INELIGIBLE
+
+with:
+
+dnd = true
+
+and:
+
+consent_basis = REVOKED
+
+AI cannot reverse this state.
+
+Controlled testing verified:
+
+- normal inbound reply;
+- replay;
+- STOP;
+- ambiguous normal reply;
+- ambiguous STOP.
+
+A remote synthetic normal-reply fixture also passed the complete:
+
+ingest
+-> claim
+-> reconcile
+-> persist
+-> complete
+
+path.
+
+The synthetic remote fixture was subsequently removed.
+
+===============================================================================
+12. CURRENT N8N OPERATIONAL STATE
+===============================================================================
+
+Published workers include:
+
+P4 - Retell Post-Call Analysis Worker
+
+P5 - Human Handoff Notification Worker
+
+P5D - Dead-Letter Operator Alert Worker
+
+P6C - Missed-Call Recovery SMS Worker
+
+P6D - Twilio Inbound SMS Worker
+
+Phase 6C and Phase 6D workers use scheduled polling.
+
+Successful empty-queue scheduled executions have been verified.
+
+The current self-hosted n8n implementation uses native Node https from Code
+nodes for Supabase / Edge Function requests in the tested environment.
+
+Required runtime configuration includes:
+
+NODE_FUNCTION_ALLOW_BUILTIN=https,http
+
+N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+
+Secrets remain external to the repository.
+
+===============================================================================
+13. PHASE 6 LIVE-VERIFICATION LIMITS
+===============================================================================
+
+Implemented / verified:
+
+- Twilio provider boundary;
+- Twilio SDK/API contract;
+- Twilio webhook verification;
+- controlled provider ingress;
+- deterministic missed-call recovery;
+- SMS safety gate;
+- durable SMS outcome persistence;
+- recovery orchestration;
+- inbound SMS persistence;
+- STOP / opt-out handling;
+- replay safety;
+- published P6C and P6D workers.
+
+Not yet verified:
+
+- production Twilio account authentication;
+- authenticated live Twilio REST request;
+- Australian Twilio number;
+- real carrier SMS delivery;
+- real PSTN call;
+- live carrier-originated webhook;
+- real telephone transfer.
+
+Those items are Phase 6E.
+
+===============================================================================
+14. FROZEN COMPONENTS
+===============================================================================
+
+Do not modify without a concrete verified defect:
+
+- Phase 1 architecture lock;
+- Phase 1 addendum;
+- canonical call lifecycle ownership;
+- booking / availability behavior;
+- Phase 4 post-call worker behavior;
+- Phase 5 handoff behavior;
+- Phase 5 notification worker;
+- Phase 5D dead-letter behavior;
+- dead-letter recursion guard;
+- Twilio ingress contract;
+- deterministic missed-call recovery;
+- Phase 6C SMS safety / attempt-state behavior;
+- P6C recovery worker;
+- inbound-SMS reconciliation;
+- STOP / opt-out enforcement;
+- P6D inbound-SMS worker.
+
+Do not reopen frozen components merely to redesign or simplify them.
+
+===============================================================================
+15. DEFERRED WORK
+===============================================================================
+
+PHASE 6E - LIVE TWILIO / PSTN VERIFICATION
+
+Deferred until paid/live provider resources are justified.
+
+Future verification may include:
+
+- production credentials;
+- Australian number provisioning;
+- real SMS carrier delivery;
+- real inbound PSTN calling;
+- real carrier-originated webhooks;
+- live Retell/Twilio transfer behavior.
+
+PHASE 7 - DORMANT-LEAD REACTIVATION
+
+Not implemented in the current snapshot.
+
+===============================================================================
+16. REPOSITORY STATE
+===============================================================================
+
+Current Phase 6 workflow exports:
+
+n8n/p6c-missed-call-recovery-sms-worker.json
+
+n8n/p6d-twilio-inbound-sms-worker.json
+
+Relevant Git checkpoints include:
+
+1ddbf16
+feat: add safe Twilio recovery SMS orchestration
+
+cc85e40
+feat: add authoritative Twilio inbound SMS reconciliation
+
+321f01d
+feat: add Twilio inbound SMS worker
+
+45f9378
+feat: preserve missed-call recovery SMS worker
+
+===============================================================================
+17. CURRENT PROJECT POSITION
+===============================================================================
+
+Phases 6A through 6D are complete at the approved test-mode scope.
+
+Phase 6E is intentionally deferred.
+
+Further Twilio implementation is not required before the repository can be
+presented as a portfolio project, provided the live-carrier verification limits
+remain clearly disclosed.
+
+===============================================================================
+END CURRENT STATE v1.4
+===============================================================================

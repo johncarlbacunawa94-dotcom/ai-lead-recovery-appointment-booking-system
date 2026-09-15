@@ -1,0 +1,363 @@
+PHASE 6 TEST-MODE ADDENDUM v1.5
+AI Lead Recovery & Appointment Booking System
+
+Date: 2026-09-16
+Status: ACTIVE
+Implementation state: PHASE 6A THROUGH 6D COMPLETE
+Live carrier verification: PHASE 6E DEFERRED
+
+Baseline preserved:
+
+- PHASE1_ARCHITECTURE_LOCK_v1.0.txt
+- PHASE1_ARCHITECTURE_ADDENDUM_v1.1.txt
+- PROJECT_ARCHITECTURE_CURRENT_v1.4.txt
+
+===============================================================================
+1. PURPOSE
+===============================================================================
+
+Twilio is the intended PSTN and SMS transport provider for this project.
+
+Live Twilio provisioning requires paid carrier/account resources that are
+intentionally not being purchased for the current portfolio implementation.
+
+This addendum authorizes controlled test-mode implementation of the provider
+boundary while preserving the original architectural responsibilities.
+
+It does not redefine PostgreSQL, Retell, Edge Function, or n8n ownership.
+
+===============================================================================
+2. AUTHORIZED TEST-MODE ARCHITECTURE
+===============================================================================
+
+Phase 6 test-mode work may use:
+
+- the real Twilio SDK and API contract;
+- Twilio webhook payload formats;
+- X-Twilio-Signature verification;
+- controlled provider-shaped events;
+- MOCK transport mode for outbound SMS;
+- provider-independent PostgreSQL state;
+- Supabase Edge Functions as synchronous provider boundaries;
+- existing transactional outbox infrastructure;
+- self-hosted n8n for asynchronous orchestration.
+
+No real carrier delivery is required for Phases 6A through 6D.
+
+===============================================================================
+3. ARCHITECTURAL BOUNDARY
+===============================================================================
+
+The Phase 6 boundary remains:
+
+Twilio transport
+    ->
+verified provider ingress / transport adapter
+    ->
+PostgreSQL authoritative state
+    ->
+transactional outbox
+    ->
+n8n asynchronous orchestration
+
+Responsibilities remain:
+
+Twilio
+- external SMS / telephony transport
+
+Retell
+- AI voice conversation and approved voice-tool behavior
+
+Supabase Edge Functions
+- verified provider ingress
+- protected synchronous provider adapters
+- request validation
+
+PostgreSQL
+- authoritative calls
+- prospects
+- contact identity
+- eligibility
+- consent
+- messages
+- provider evidence
+- send-attempt state
+- idempotency
+- lifecycle and business-state truth
+
+n8n
+- asynchronous claiming
+- orchestration
+- retries
+- notifications
+- scheduled processing
+
+===============================================================================
+4. PHASE 6A - PROVIDER BOUNDARY
+===============================================================================
+
+Status:
+
+COMPLETE
+
+Implemented Twilio webhook event families:
+
+- voice_status
+- incoming_message
+- message_status
+
+The webhook boundary:
+
+- requires POST;
+- accepts Twilio form-encoded payloads;
+- verifies X-Twilio-Signature;
+- hashes provider evidence;
+- persists provider events;
+- creates transactional outbox work;
+- supports replay-safe event identity.
+
+The provider boundary does not create a parallel CRM/domain model.
+
+Existing canonical PostgreSQL tables remain authoritative.
+
+===============================================================================
+5. PHASE 6B - MISSED-CALL RECOVERY CORE
+===============================================================================
+
+Status:
+
+COMPLETE / FROZEN
+
+Implemented deterministic recovery behavior includes:
+
+- authoritative missed-call identification;
+- provider call resolution;
+- phone/contact identity resolution;
+- preservation of ambiguous identity;
+- recovery eligibility evaluation;
+- duplicate protection;
+- transactionally created recovery work.
+
+AI does not determine whether a missed call qualifies for recovery.
+
+===============================================================================
+6. PHASE 6C - OUTBOUND RECOVERY SMS
+===============================================================================
+
+Status:
+
+COMPLETE / FROZEN
+
+Implemented components include:
+
+- pre-send recovery SMS safety gate;
+- Twilio transport adapter;
+- MOCK and LIVE transport modes;
+- controlled transport scenarios;
+- durable outbound_message_attempts state;
+- protected recovery-SMS Edge Function;
+- n8n missed-call recovery worker.
+
+Immediately before a send attempt, authoritative controls re-check:
+
+- phone/contact resolution;
+- SMS eligibility;
+- DND;
+- revoked consent;
+- duplicate/idempotent send state.
+
+Durable send-attempt outcomes include:
+
+- SENDING
+- PERSISTED
+- REJECTED_RETRYABLE
+- REJECTED_FINAL
+- UNKNOWN
+
+UNKNOWN exists specifically to avoid blindly repeating a provider-boundary
+operation when the external outcome cannot be safely determined.
+
+The deployed portfolio environment currently uses MOCK transport.
+
+No real SMS carrier delivery is claimed.
+
+===============================================================================
+7. PHASE 6D - INBOUND REPLY AND OPT-OUT
+===============================================================================
+
+Status:
+
+COMPLETE / FROZEN
+
+Implemented behavior includes:
+
+- TWILIO_INCOMING_MESSAGE outbox claiming;
+- authoritative inbound-message reconciliation;
+- provider MessageSid replay protection;
+- exact normalized phone matching;
+- preservation of ambiguous identity;
+- inbound conversation persistence;
+- inbound message persistence;
+- deterministic STOP classification;
+- deterministic consent revocation;
+- deterministic DND enforcement;
+- all supported SMS purposes made ineligible on opt-out;
+- consent provenance;
+- review routing for ambiguous / unresolved identity;
+- asynchronous completion / failure through n8n.
+
+Recognized deterministic opt-out tokens include:
+
+- STOP
+- STOPALL
+- UNSUBSCRIBE
+- CANCEL
+- END
+- QUIT
+
+AI cannot reverse deterministic opt-out or DND state.
+
+A controlled remote normal-reply fixture passed the full path:
+
+provider evidence
+-> outbox claim
+-> inbound reconciliation
+-> message persistence
+-> conversation persistence
+-> outbox completion
+
+The synthetic remote fixture was then removed.
+
+Local transactional behavior testing also verified:
+
+- normal reply;
+- replay;
+- STOP;
+- ambiguous normal reply;
+- ambiguous STOP.
+
+===============================================================================
+8. N8N PHASE 6 WORKERS
+===============================================================================
+
+Published workers:
+
+P6C - Missed-Call Recovery SMS Worker
+
+P6D - Twilio Inbound SMS Worker
+
+Both use PostgreSQL / Edge Function contracts rather than owning authoritative
+business-state decisions.
+
+Scheduled empty-queue execution has been verified.
+
+Workflow exports are versioned in:
+
+n8n/p6c-missed-call-recovery-sms-worker.json
+
+n8n/p6d-twilio-inbound-sms-worker.json
+
+Secrets are referenced through environment variables and are not embedded in
+the workflow exports.
+
+===============================================================================
+9. VERIFIED CLAIM BOUNDARY
+===============================================================================
+
+The following may be claimed:
+
+- Twilio provider integration implemented;
+- Twilio SDK/API contract implemented;
+- Twilio webhook verification implemented;
+- controlled Twilio provider events exercised;
+- provider replay/idempotency tested;
+- deterministic missed-call recovery implemented;
+- pre-send SMS safety controls implemented;
+- durable SMS attempt-state handling implemented;
+- inbound SMS persistence implemented;
+- deterministic STOP / opt-out handling implemented;
+- scheduled Phase 6 n8n orchestration implemented;
+- remote database reconciliation path tested.
+
+The following must NOT be claimed as verified:
+
+- production Twilio account authentication;
+- authenticated live Twilio REST request against production credentials;
+- Australian Twilio number provisioning;
+- real SMS carrier delivery;
+- real PSTN call path;
+- real inbound carrier webhook delivery;
+- real telephone transfer.
+
+===============================================================================
+10. PHASE 6E - LIVE ACTIVATION
+===============================================================================
+
+Status:
+
+DEFERRED
+
+Future live activation may include:
+
+1. provision the required Twilio account resources;
+2. satisfy Australian regulatory requirements;
+3. provision the required Australian number;
+4. configure production Twilio credentials;
+5. switch approved transport configuration from MOCK to LIVE;
+6. verify one authenticated Twilio API request;
+7. verify real SMS delivery;
+8. configure the approved voice / SIP path;
+9. verify real inbound PSTN calling;
+10. verify real transfer behavior.
+
+Phase 6E must plug into the existing provider boundary.
+
+It must not require redesign of authoritative PostgreSQL business logic.
+
+===============================================================================
+11. FROZEN PHASE 6 COMPONENTS
+===============================================================================
+
+Do not redesign Phases 6A through 6D without a concrete verified defect.
+
+Frozen behavior includes:
+
+- Twilio provider ingress contract;
+- missed-call recovery core;
+- SMS pre-send eligibility gate;
+- durable outbound attempt model;
+- recovery-SMS Edge orchestration;
+- P6C n8n worker;
+- inbound-message reconciliation;
+- deterministic STOP / opt-out enforcement;
+- P6D n8n worker.
+
+===============================================================================
+12. SECURITY
+===============================================================================
+
+Never commit:
+
+- TWILIO_ACCOUNT_SID;
+- TWILIO_AUTH_TOKEN;
+- Supabase service-role credentials;
+- recovery worker secrets;
+- Retell secrets;
+- provider credential material.
+
+Use fictional/demo identities and controlled provider events until Phase 6E.
+
+===============================================================================
+13. NEXT PROJECT STATE
+===============================================================================
+
+Phase 6A through 6D are complete at their authorized test-mode scope.
+
+Phase 6E remains intentionally deferred.
+
+Phase 7 dormant-lead reactivation has not yet been implemented and remains a
+separate future phase.
+
+===============================================================================
+END PHASE 6 TEST-MODE ADDENDUM v1.5
+===============================================================================
