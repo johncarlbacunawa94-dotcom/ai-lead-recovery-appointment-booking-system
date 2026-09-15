@@ -1,0 +1,273 @@
+[
+  {
+    "updatedAt": "2026-09-15T18:31:43.513Z",
+    "createdAt": "2026-09-15T14:36:40.511Z",
+    "id": "CNIUOUy3vPtQLGBZ",
+    "name": "P6C — Missed-Call Recovery SMS Worker",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {},
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          -208,
+          -64
+        ],
+        "id": "17ffd0a0-851e-4f5b-bc57-4fc526132a27",
+        "name": "When clicking ‘Execute workflow’"
+      },
+      {
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 3
+                  },
+                  "conditions": [
+                    {
+                      "leftValue": "={{ $json.next_action }}",
+                      "rightValue": "COMPLETE_OUTBOX",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      },
+                      "id": "595961da-53e5-47bb-a705-4e9617de4117"
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "COMPLETE_OUTBOX"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 3
+                  },
+                  "conditions": [
+                    {
+                      "id": "7375b7e2-b450-40a3-870a-04e6436b485a",
+                      "leftValue": "={{ $json.next_action }}",
+                      "rightValue": "FAIL_OUTBOX",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals",
+                        "name": "filter.operator.equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "FAIL_OUTBOX"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.4,
+        "position": [
+          672,
+          0
+        ],
+        "id": "cdc64f5c-d908-4178-ae17-5da0bd1e9043",
+        "name": "Route Recovery Result"
+      },
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "minutes",
+                "minutesInterval": 1
+              }
+            ]
+          }
+        },
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.4,
+        "position": [
+          -208,
+          96
+        ],
+        "id": "663f17d5-fa3b-4e03-97dc-b1cd748b9b14",
+        "name": "Schedule Trigger"
+      },
+      {
+        "parameters": {
+          "jsCode": "const https = require('https');\n\nconst serviceRole =\n  $env.P6C_SUPABASE_SERVICE_ROLE_KEY;\n\nif (\n  typeof serviceRole !== 'string' ||\n  serviceRole.length < 20\n) {\n  throw new Error(\n    'P6C_SUPABASE_SERVICE_ROLE_KEY is unavailable'\n  );\n}\n\nconst body = JSON.stringify({\n  p_worker_id:\n    'n8n-phase6c-recovery-sms-worker',\n\n  p_event_types: [\n    'TWILIO_MISSED_CALL_RECOVERY_READY',\n  ],\n\n  p_limit: 10,\n\n  p_lock_timeout_seconds: 300,\n});\n\nconst response = await new Promise(\n  (resolve, reject) => {\n    const req = https.request(\n      {\n        hostname:\n          'lirmmoebcvmoixxfbmlu.supabase.co',\n\n        port: 443,\n\n        path:\n          '/rest/v1/rpc/claim_outbox_events_v1',\n\n        method: 'POST',\n\n        headers: {\n          apikey: serviceRole,\n\n          Authorization:\n            `Bearer ${serviceRole}`,\n\n          'Content-Type':\n            'application/json',\n        },\n\n        timeout: 15000,\n      },\n\n      (res) => {\n        let data = '';\n\n        res.on('data', (chunk) => {\n          data += chunk;\n        });\n\n        res.on('end', () => {\n          resolve({\n            status: res.statusCode,\n            body: data,\n          });\n        });\n      }\n    );\n\n    req.on('timeout', () => {\n      req.destroy(\n        new Error('SUPABASE_CLAIM_TIMEOUT')\n      );\n    });\n\n    req.on('error', reject);\n\n    req.write(body);\n    req.end();\n  }\n);\n\nif (\n  response.status < 200 ||\n  response.status >= 300\n) {\n  throw new Error(\n    `SUPABASE_CLAIM_HTTP_${response.status}: ${response.body}`\n  );\n}\n\nconst rows =\n  response.body.trim() === ''\n    ? []\n    : JSON.parse(response.body);\n\nif (!Array.isArray(rows)) {\n  throw new Error(\n    'SUPABASE_CLAIM_RESPONSE_NOT_ARRAY'\n  );\n}\n\nreturn rows.map((row) => ({\n  json: row,\n}));"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          32,
+          16
+        ],
+        "id": "255bf775-5dbd-42ec-8b50-0ad71d82a762",
+        "name": "Claim Recovery Outbox"
+      },
+      {
+        "parameters": {
+          "jsCode": "const https = require('https');\n\nconst workerSecret =\n  $env.P6C_RECOVERY_WORKER_SECRET;\n\nif (\n  typeof workerSecret !== 'string' ||\n  workerSecret.length < 20\n) {\n  throw new Error(\n    'P6C_RECOVERY_WORKER_SECRET is unavailable'\n  );\n}\n\nconst inputItems = $input.all();\nconst results = [];\n\nfor (const item of inputItems) {\n  const outboxEventId =\n    item.json.outbox_event_id;\n\n  if (\n    typeof outboxEventId !== 'string' ||\n    outboxEventId.length < 30\n  ) {\n    throw new Error(\n      'Missing or invalid outbox_event_id'\n    );\n  }\n\n  const requestBody = JSON.stringify({\n    outbox_event_id: outboxEventId,\n    worker_id:\n      'n8n-phase6c-recovery-sms-worker',\n  });\n\n  const response = await new Promise(\n    (resolve, reject) => {\n      const req = https.request(\n        {\n          hostname:\n            'lirmmoebcvmoixxfbmlu.supabase.co',\n\n          port: 443,\n\n          path:\n            '/functions/v1/twilio-recovery-sms',\n\n          method: 'POST',\n\n          headers: {\n            'x-recovery-worker-secret':\n              workerSecret,\n\n            'Content-Type':\n              'application/json',\n          },\n\n          timeout: 30000,\n        },\n\n        (res) => {\n          let body = '';\n\n          res.on('data', (chunk) => {\n            body += chunk;\n          });\n\n          res.on('end', () => {\n            resolve({\n              status: res.statusCode,\n              body,\n            });\n          });\n        }\n      );\n\n      req.on('timeout', () => {\n        req.destroy(\n          new Error(\n            'RECOVERY_SMS_REQUEST_TIMEOUT'\n          )\n        );\n      });\n\n      req.on('error', reject);\n\n      req.write(requestBody);\n      req.end();\n    }\n  );\n\n  if (\n    response.status < 200 ||\n    response.status >= 300\n  ) {\n    throw new Error(\n      `RECOVERY_SMS_HTTP_${response.status}: ` +\n      response.body.slice(0, 500)\n    );\n  }\n\n  let parsed;\n\n  try {\n    parsed = JSON.parse(response.body);\n  } catch {\n    throw new Error(\n      'RECOVERY_SMS_INVALID_JSON'\n    );\n  }\n\n  results.push({\n    json: parsed,\n  });\n}\n\nreturn results;"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          256,
+          16
+        ],
+        "id": "7d7f71c3-a56c-431e-bb29-ed3305402857",
+        "name": "Process Recovery SMS"
+      },
+      {
+        "parameters": {
+          "jsCode": "const https = require('https');\n\nconst serviceRole = $env.P6C_SUPABASE_SERVICE_ROLE_KEY;\n\nif (!serviceRole) {\n  throw new Error(\n    'P6C_SUPABASE_SERVICE_ROLE_KEY is unavailable'\n  );\n}\n\nconst items = $input.all();\nconst output = [];\n\nfor (const item of items) {\n  const outboxEventId = item.json.outbox_event_id;\n\n  if (!outboxEventId) {\n    throw new Error(\n      'Missing outbox_event_id'\n    );\n  }\n\n  const body = JSON.stringify({\n    p_outbox_event_id: outboxEventId,\n    p_worker_id: 'n8n-phase6c-recovery-sms-worker',\n  });\n\n  const response = await new Promise(\n    (resolve, reject) => {\n      const req = https.request(\n        {\n          hostname: 'lirmmoebcvmoixxfbmlu.supabase.co',\n          port: 443,\n          path: '/rest/v1/rpc/complete_outbox_event_v1',\n          method: 'POST',\n          headers: {\n            apikey: serviceRole,\n            Authorization: `Bearer ${serviceRole}`,\n            'Content-Type': 'application/json',\n          },\n          timeout: 15000,\n        },\n        (res) => {\n          let data = '';\n\n          res.on('data', (chunk) => {\n            data += chunk;\n          });\n\n          res.on('end', () => {\n            resolve({\n              status: res.statusCode,\n              body: data,\n            });\n          });\n        }\n      );\n\n      req.on('timeout', () => {\n        req.destroy(\n          new Error('SUPABASE_COMPLETE_TIMEOUT')\n        );\n      });\n\n      req.on('error', reject);\n\n      req.write(body);\n      req.end();\n    }\n  );\n\n  if (\n    response.status < 200 ||\n    response.status >= 300\n  ) {\n    throw new Error(\n      `SUPABASE_COMPLETE_HTTP_${response.status}: ${response.body}`\n    );\n  }\n\n  const rows =\n    response.body.trim() === ''\n      ? []\n      : JSON.parse(response.body);\n\n  if (!Array.isArray(rows)) {\n    throw new Error(\n      'SUPABASE_COMPLETE_RESPONSE_NOT_ARRAY'\n    );\n  }\n\n  for (const row of rows) {\n    output.push({\n      json: row,\n    });\n  }\n}\n\nreturn output;"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          896,
+          -96
+        ],
+        "id": "ec0513c2-b79d-44aa-bdd8-8c63b334492f",
+        "name": "Complete Recovery Outbox"
+      },
+      {
+        "parameters": {
+          "jsCode": "const https = require('https');\n\nconst serviceRole =\n  $env.P6C_SUPABASE_SERVICE_ROLE_KEY;\n\nif (\n  typeof serviceRole !== 'string' ||\n  serviceRole.length < 20\n) {\n  throw new Error(\n    'P6C_SUPABASE_SERVICE_ROLE_KEY is unavailable'\n  );\n}\n\nconst items = $input.all();\nconst output = [];\n\nfor (const item of items) {\n  const outboxEventId =\n    item.json.outbox_event_id;\n\n  if (!outboxEventId) {\n    throw new Error(\n      'Missing outbox_event_id'\n    );\n  }\n\n  const errorCode =\n    item.json.reason_code ||\n    'RECOVERY_SMS_RETRYABLE_FAILURE';\n\n  const retryAfterSeconds =\n    Number.isInteger(\n      item.json.retry_after_seconds\n    ) &&\n    item.json.retry_after_seconds >= 0\n      ? item.json.retry_after_seconds\n      : 60;\n\n  const body = JSON.stringify({\n    p_outbox_event_id:\n      outboxEventId,\n\n    p_worker_id:\n      'n8n-phase6c-recovery-sms-worker',\n\n    p_error:\n      errorCode,\n\n    p_retry_after_seconds:\n      retryAfterSeconds,\n  });\n\n  const response = await new Promise(\n    (resolve, reject) => {\n      const req = https.request(\n        {\n          hostname:\n            'lirmmoebcvmoixxfbmlu.supabase.co',\n\n          port: 443,\n\n          path:\n            '/rest/v1/rpc/fail_outbox_event_v1',\n\n          method: 'POST',\n\n          headers: {\n            apikey: serviceRole,\n\n            Authorization:\n              `Bearer ${serviceRole}`,\n\n            'Content-Type':\n              'application/json',\n          },\n\n          timeout: 15000,\n        },\n\n        (res) => {\n          let data = '';\n\n          res.on('data', (chunk) => {\n            data += chunk;\n          });\n\n          res.on('end', () => {\n            resolve({\n              status: res.statusCode,\n              body: data,\n            });\n          });\n        }\n      );\n\n      req.on('timeout', () => {\n        req.destroy(\n          new Error(\n            'SUPABASE_FAIL_OUTBOX_TIMEOUT'\n          )\n        );\n      });\n\n      req.on('error', reject);\n\n      req.write(body);\n      req.end();\n    }\n  );\n\n  if (\n    response.status < 200 ||\n    response.status >= 300\n  ) {\n    throw new Error(\n      `SUPABASE_FAIL_HTTP_${response.status}: ` +\n      response.body.slice(0, 500)\n    );\n  }\n\n  const rows =\n    response.body.trim() === ''\n      ? []\n      : JSON.parse(response.body);\n\n  if (!Array.isArray(rows)) {\n    throw new Error(\n      'SUPABASE_FAIL_RESPONSE_NOT_ARRAY'\n    );\n  }\n\n  for (const row of rows) {\n    output.push({\n      json: row,\n    });\n  }\n}\n\nreturn output;"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          896,
+          96
+        ],
+        "id": "1b93aa9f-00e7-44ad-aa5d-5192d1bb516a",
+        "name": "Fail Recovery Outbox"
+      }
+    ],
+    "connections": {
+      "When clicking ‘Execute workflow’": {
+        "main": [
+          [
+            {
+              "node": "Claim Recovery Outbox",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Recovery Result": {
+        "main": [
+          [
+            {
+              "node": "Complete Recovery Outbox",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Fail Recovery Outbox",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Claim Recovery Outbox",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Claim Recovery Outbox": {
+        "main": [
+          [
+            {
+              "node": "Process Recovery SMS",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Process Recovery SMS": {
+        "main": [
+          [
+            {
+              "node": "Route Recovery Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "binaryMode": "separate"
+    },
+    "staticData": {
+      "node:Schedule Trigger": {
+        "recurrenceRules": [
+          null
+        ],
+        "recurrenceRuleSignatures": [
+          null
+        ]
+      }
+    },
+    "meta": null,
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "8101bf97-84a0-4aba-b6d8-2911541c1fb0",
+    "activeVersionId": "8101bf97-84a0-4aba-b6d8-2911541c1fb0",
+    "versionCounter": 99,
+    "triggerCount": 1,
+    "sourceWorkflowId": null,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-09-15T14:36:40.518Z",
+        "createdAt": "2026-09-15T14:36:40.518Z",
+        "role": "workflow:owner",
+        "workflowId": "CNIUOUy3vPtQLGBZ",
+        "projectId": "7tO5kQr5mTTNn4H5",
+        "project": {
+          "updatedAt": "2026-07-08T06:53:36.469Z",
+          "createdAt": "2026-07-08T06:51:26.504Z",
+          "id": "7tO5kQr5mTTNn4H5",
+          "name": "john bacunawa <johncarlbux@gmmail.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "dbb3e95d-59c7-4bbe-a9a6-c9d3d459df10"
+        }
+      }
+    ],
+    "versionMetadata": {
+      "name": "Version 8101bf97",
+      "description": ""
+    }
+  }
+]
